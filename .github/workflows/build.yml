@@ -1,0 +1,28 @@
+name: Build Windows portable
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run regression checks
+        shell: powershell
+        run: .\tests\run.ps1
+      - name: Build
+        shell: powershell
+        run: .\build.ps1
+      - name: Package
+        shell: powershell
+        run: .\package.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeskDecor-portable-x64
+          path: dist/DeskDecor-portable-x64.zip

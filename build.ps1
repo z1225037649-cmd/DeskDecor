@@ -1,0 +1,24 @@
+$ErrorActionPreference = 'Stop'
+$root = $PSScriptRoot
+$iconScript = Join-Path $root 'make_icon.ps1'
+$icon = Join-Path $root 'DeskDecor.ico'
+$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+if (-not (Test-Path $csc)) { $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
+if (-not (Test-Path $csc)) { throw 'Windows .NET Framework C# compiler not found' }
+$sources = @(Get-ChildItem -LiteralPath $root -Filter '*.cs' | ForEach-Object { $_.FullName })
+& $iconScript -OutputPath $icon
+$out = Join-Path $root 'DeskDecor.exe'
+$engine = Join-Path $root 'vendor\TranslucentTB-2026.2-x64\ExplorerTAP.dll'
+if (-not (Test-Path -LiteralPath $engine)) { throw 'Missing official ExplorerTAP 2026.2 x64 DLL' }
+if ((Get-FileHash -LiteralPath $engine -Algorithm SHA256).Hash -ne 'C48F1A06168ACD7839269DDE0D15CCF5D09C702512B94DD6BA9A05DF1B153DC2') { throw 'ExplorerTAP checksum mismatch' }
+$args = @('/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/codepage:65001',
+  ('/resource:' + $engine + ',DeskDecor.ExplorerTAP.dll'),
+  ('/resource:' + (Join-Path $root 'LICENSE.md') + ',DeskDecor.LICENSE.md'),
+  ('/resource:' + (Join-Path $root 'THIRD-PARTY-NOTICES.md') + ',DeskDecor.THIRD-PARTY-NOTICES.md'),
+  ('/win32manifest:' + (Join-Path $root 'app.manifest')),
+  ('/win32icon:' + $icon),
+  '/r:System.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll', '/r:System.Xml.dll',
+  ('/out:' + $out)) + $sources
+& $csc $args
+if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+Write-Host ('Built: ' + $out)

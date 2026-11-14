@@ -1,0 +1,17 @@
+# Local preferences and desktop references
+DeskDecor.settings.xml*
+DeskDecor.runtime/
+*.lnk
+*.log
+DeskDecor.shell.txt
+DeskDecor.surface.png
+.preview/
+
+# Generated output
+dist/
+*.exe
+*.pdb
+*.tmp
+bin/
+obj/
+.vs/
