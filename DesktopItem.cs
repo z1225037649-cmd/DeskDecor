@@ -10,8 +10,10 @@ namespace DeskDecor
     {
         public string Name { get; set; }
         public string Path { get; set; }
+        public string Label { get; set; }
         public int X { get; set; }
         public int Y { get; set; }
+        public string GroupId { get; set; }
 
         public DesktopItem() { }
 
@@ -20,6 +22,7 @@ namespace DeskDecor
             Path = path;
             Name = System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
             if (string.IsNullOrEmpty(Name)) Name = path;
+            Label = string.Empty;
             X = x;
             Y = y;
         }
@@ -28,14 +31,22 @@ namespace DeskDecor
     [Serializable]
     public sealed class GroupLayout
     {
+        public string Id { get; set; }
         public string Title { get; set; }
         public int X { get; set; }
         public int Y { get; set; }
         public int Width { get; set; }
         public int Height { get; set; }
         public bool Collapsed { get; set; }
+        public int Dpi { get; set; }
 
         public string DisplayTitle { get { return string.IsNullOrWhiteSpace(Title) ? "快捷入口" : Title; } }
+
+        public GroupLayout()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            Dpi = 96;
+        }
     }
 
     [Serializable]
@@ -43,24 +54,52 @@ namespace DeskDecor
     {
         public List<DesktopItem> Items { get; set; }
         public GroupLayout Group { get; set; }
+        public List<GroupLayout> Groups { get; set; }
+        public string ActiveGroupId { get; set; }
         public bool TaskbarTransparent { get; set; }
         public bool DesktopIconsHidden { get; set; }
         public bool DesktopInitialized { get; set; }
+        public int IconSize { get; set; }
+        public int Opacity { get; set; }
 
         public AppSettings()
         {
             Items = new List<DesktopItem>();
             Group = new GroupLayout();
+            Groups = new List<GroupLayout>();
+            IconSize = 24;
+            Opacity = 100;
             TaskbarTransparent = false;
         }
 
         public void Normalize()
         {
+            IconSize = Math.Max(16, Math.Min(32, IconSize <= 0 ? 24 : IconSize));
+            Opacity = Math.Max(25, Math.Min(100, Opacity <= 0 ? 100 : Opacity));
             if (Items == null) Items = new List<DesktopItem>();
             if (Group == null) Group = new GroupLayout();
+            if (Groups == null) Groups = new List<GroupLayout>();
+            if (Groups.Count == 0) Groups.Add(Group);
+            if (Groups[0] == null) Groups[0] = Group;
+            Group = Groups[0];
+            var groupIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (GroupLayout group in Groups)
+            {
+                if (group == null) throw new InvalidDataException("配置中包含空分组。");
+                if (string.IsNullOrWhiteSpace(group.Id) || !groupIds.Add(group.Id))
+                {
+                    do { group.Id = Guid.NewGuid().ToString("N"); }
+                    while (!groupIds.Add(group.Id));
+                }
+                if (group.Dpi < 48 || group.Dpi > 768) group.Dpi = 96;
+            }
+            if (!groupIds.Contains(ActiveGroupId)) ActiveGroupId = Group.Id;
             foreach (DesktopItem item in Items)
+            {
                 if (item == null || string.IsNullOrWhiteSpace(item.Path))
                     throw new InvalidDataException("配置中包含无效的桌面项目。");
+                if (!groupIds.Contains(item.GroupId)) item.GroupId = Group.Id;
+            }
         }
     }
 

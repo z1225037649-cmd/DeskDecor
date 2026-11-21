@@ -20,10 +20,19 @@ internal static class SettingsStoreRegression
         try
         {
             var legacy = new AppSettings { Group = new GroupLayout { Title = "旧版" } };
-            legacy.Items.Add(new DesktopItem(@"C:\legacy.txt", 10, 20));
+            legacy.Items.Add(new DesktopItem("C:\\legacy.txt", 10, 20));
             legacy.Normalize();
-            Expect(legacy.Group.Title == "旧版" && legacy.Items.Count == 1 && legacy.Items[0].Path == @"C:\legacy.txt",
-                "Legacy single-group settings must retain their title and entry paths");
+            Expect(legacy.Groups.Count == 1 && legacy.Items[0].GroupId == legacy.Group.Id &&
+                legacy.ActiveGroupId == legacy.Group.Id,
+                "Legacy single-group settings must migrate entries and the active group without loss");
+
+            GroupLayout extraGroup = new GroupLayout { Title = "文档" };
+            legacy.Groups.Add(extraGroup);
+            legacy.Items[0].GroupId = extraGroup.Id;
+            legacy.ActiveGroupId = extraGroup.Id;
+            legacy.Normalize();
+            Expect(legacy.Groups.Count == 2 && legacy.Items[0].GroupId == extraGroup.Id && legacy.ActiveGroupId == extraGroup.Id,
+                "Multiple groups and their entry assignments must survive normalization");
 
             SettingsStore.Save(path, WithTitle("first"));
             SettingsStore.Save(path, WithTitle("second"));

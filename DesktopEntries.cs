@@ -22,6 +22,11 @@ namespace DeskDecor
 
         public static int AddPaths(AppSettings settings, IEnumerable<string> paths)
         {
+            return AddPaths(settings, paths, string.IsNullOrWhiteSpace(settings.ActiveGroupId) ? settings.Group.Id : settings.ActiveGroupId);
+        }
+
+        public static int AddPaths(AppSettings settings, IEnumerable<string> paths, string groupId)
+        {
             if (paths == null) return 0;
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (DesktopItem item in settings.Items)
@@ -34,7 +39,9 @@ namespace DeskDecor
                     if (string.IsNullOrWhiteSpace(path)) continue;
                     string full = CanonicalPath(path);
                     if (IsMetadata(full) || (!File.Exists(full) && !Directory.Exists(full)) || !known.Add(full)) continue;
-                    settings.Items.Add(new DesktopItem(full, 0, 0));
+                    DesktopItem item = new DesktopItem(full, 0, 0);
+                    item.GroupId = groupId;
+                    settings.Items.Add(item);
                     added++;
                 }
                 catch (ArgumentException) { }

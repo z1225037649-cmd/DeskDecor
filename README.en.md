@@ -10,15 +10,17 @@ Run `build.ps1` in PowerShell. The build uses the Windows .NET Framework C# comp
 
 - Double-click `DeskDecor.exe` to show the desktop items.
 - Right-click the tray icon to add a shortcut/file or folder, manage items, toggle the overlay, or exit.
-- Double-click an item to open its target. Items are arranged together inside one transparent group frame.
+- Double-click an item to open its target. Items are arranged inside independent transparent group frames.
 - Drag any empty area inside the frame to move the whole group. Double-click an item to open it.
 - Drag the lower-right grip to resize the group; changing its width reflows items inside the frame.
 - Drag an item past the Windows drag threshold to start sorting. A translucent copy follows the pointer and a line marks the insertion point. Other items stay still until you release the left button; then the item is inserted once and intervening items shift. Drop in trailing empty space to append. Drop outside the frame, press Escape, or right-click to cancel. Losing mouse capture also cancels without saving.
-- Items have no card or panel background. Icons remain 24 pixels, with a subtle black contour following their alpha silhouette and a soft shadow. White labels and header text use a fine black outline and shadow for readability on both light and dark wallpaper. Outlined icon bitmaps are cached and drag previews fade together with their outline.
+- Items have no card or panel background. Icon size is adjustable from 16 to 32 logical pixels and scales with monitor DPI, with a subtle black contour following the alpha silhouette and a soft shadow. White labels and header text use a fine black outline and shadow for readability on both light and dark wallpaper. Outlined icon bitmaps are cached and drag previews fade together with their outline.
 - The frame has subtle rounded edges, with a brighter border and a small corner indicator only while hovered. Labels use Microsoft YaHei UI with single-line ellipsis; hovering an item shows its full name and path. Windows shell icons are cached so real folder artwork is shown without repeated disk reads during dragging.
-- Layout uses consistent padding and centered columns, retaining the saved item order and frame position. Desktop metadata (`desktop.ini`, `Thumbs.db`) is omitted from the overlay without deleting the source files or existing saved entries.
+- Layout uses consistent padding and centered columns, retaining each group's saved item order and frame position. Desktop metadata (`desktop.ini`, `Thumbs.db`) is omitted from the overlay without deleting the source files or existing saved entries.
 - Use "自动排列" in the management window to lay out all items in a compact grid within the group.
 - Use the tray menu or the management window button to show or hide the overlay manually.
+- Create and switch between independent groups; search, rename, move, or remove entries in settings, with icon-size and opacity controls.
+- Layout scales to the group monitor's DPI and restores off-screen groups after a display change. Settings use verified atomic saves with recovery from the last valid backup.
 - Click the frame's upper-right "收起" button to hide its contents, leaving a small draggable header. Click "展开" to restore the contents. Expanded size, position, order, and collapsed state are saved. The hidden area passes mouse input through to the desktop.
 - Double-click the upper-left group title, right-click it and select "修改分组名称", or use "修改分组名称" in settings. Edit directly over the title without a dialog; Enter or clicking elsewhere saves, and Escape cancels. An empty name restores "快捷入口". Chinese IME candidate input is respected. Choosing rename from settings closes settings and starts editing at the desktop title. Custom names are saved beside the EXE and persist when collapsed or restarted.
 - Drag one or more files, shortcuts, or folders from Explorer into the frame to add entries. The border highlights and the header says "松开添加" while a drop is accepted. Dropping on a collapsed header adds entries and expands it. Existing entries are skipped; original files are never moved or copied.
@@ -29,6 +31,8 @@ Run `build.ps1` in PowerShell. The build uses the Windows .NET Framework C# comp
 - Keep the EXE in a writable folder so it can save `DeskDecor.settings.xml` alongside itself.
 
 On first run, existing entries from the user and public Desktop folders are shown. Items are references to their original paths; files are not copied or moved. The initialized empty-list marker prevents removed entries from being imported again.
+
+Live verification covers a single monitor at 125% scaling. Physical mixed-DPI monitors, display hot-plugging and input through the original hidden group-title editor remain unverified. See the [verification status](tests/verification-status-2026-11-21.md) for passed checks and remaining coverage.
 
 The EXE uses the Windows .NET Framework installed with Windows. It is a portable x64 app with an embedded native XAML engine; first use extracts the hash-checked engine and its notices into `DeskDecor.runtime/ExplorerTAP-2026.2-x64/` beside the EXE. Keep this folder while it runs. No installation or administrator rights are required. The XAML engine stays loaded in Explorer until Explorer exits; it restores the original taskbar appearance when DeskDecor stops.
 

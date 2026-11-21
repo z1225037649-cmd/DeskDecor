@@ -12,19 +12,25 @@
 
 ## 功能
 
-- 透明分组框、24 像素图标，文字和图标带细黑色轮廓及阴影。
+- 透明分组框、16–32 逻辑像素可调图标（随 DPI 缩放），文字和图标带细黑色轮廓及阴影。
 - 整组拖动、自由缩放；拖动项目后松开鼠标才提交新顺序。
+- 支持多个独立分组，可在桌面悬停切换或从管理窗口切换、创建。
 - 从资源管理器拖入文件、文件夹或快捷方式添加入口；右键移除入口保留原文件。
 - 收起和展开分组内容，双击标题原地改名。
+- 按分组所在显示器的 DPI 缩放布局；更改缩放或断开显示器后，将分组和入口恢复到可见屏幕。
+- 管理窗口支持搜索、重命名入口、移动入口到其他分组，并调整图标尺寸和显示透明度。
+- 配置通过校验后的原子替换保存，保留上一份有效备份；损坏时尝试恢复，并在无法保存或恢复时提示。
 - 桌面图层显示，普通应用窗口可以覆盖组件；已针对 Wallpaper Engine 的桌面布局适配。
 - 可选隐藏原生桌面图标和任务栏透明。Windows 11 XAML 任务栏使用 TranslucentTB ExplorerTAP 引擎，兼容性取决于系统及 Explorer 版本。
 - 可选当前用户开机自启动，默认关闭。检测到原程序路径失效时取消；程序关闭期间移动文件夹，需要下次手动启动时才能检测。
 
 ## 配置与分享
 
-配置在 EXE 旁边的 `DeskDecor.settings.xml` 中，包含项目路径、顺序和位置。分享时直接发送 Releases 中的压缩包，不要发送自己的配置文件。
+配置在 EXE 旁边的 `DeskDecor.settings.xml` 中，保存项目路径、分组、顺序、显示器布局和外观设置，并保留有效备份。分享时直接发送 Releases 中的压缩包，不要发送自己的配置文件。
 
 入口引用当前电脑的真实路径，并不会复制软件。其他用户应添加自己电脑上的项目。
+
+本轮实机验证覆盖单屏 125% 缩放环境；多屏混合 DPI、显示器热插拔和原始隐藏样式的分组改名输入仍待实机验证。已通过及待测项目见[测试状态](tests/verification-status-2026-11-21.md)。
 
 ## 构建与许可
 
@@ -48,7 +54,7 @@ Run `build.ps1` in PowerShell. The build uses the Windows .NET Framework C# comp
 - Drag any empty area inside the frame to move the whole group. Double-click an item to open it.
 - Drag the lower-right grip to resize the group; changing its width reflows items inside the frame.
 - Drag an item past the Windows drag threshold to start sorting. A translucent copy follows the pointer and a line marks the insertion point. Other items stay still until you release the left button; then the item is inserted once and intervening items shift. Drop in trailing empty space to append. Drop outside the frame, press Escape, or right-click to cancel. Losing mouse capture also cancels without saving.
-- Items have no card or panel background. Icons remain 24 pixels, with a subtle black contour following their alpha silhouette and a soft shadow. White labels and header text use a fine black outline and shadow for readability on both light and dark wallpaper. Outlined icon bitmaps are cached and drag previews fade together with their outline.
+- Items have no card or panel background. Icon size is adjustable from 16 to 32 logical pixels and scales with monitor DPI, with a subtle black contour following the alpha silhouette and a soft shadow. White labels and header text use a fine black outline and shadow for readability on both light and dark wallpaper. Outlined icon bitmaps are cached and drag previews fade together with their outline.
 - The frame has subtle rounded edges, with a brighter border and a small corner indicator only while hovered. Labels use Microsoft YaHei UI with single-line ellipsis; hovering an item shows its full name and path. Windows shell icons are cached so real folder artwork is shown without repeated disk reads during dragging.
 - Layout uses consistent padding and centered columns, retaining the saved item order and frame position. Desktop metadata (`desktop.ini`, `Thumbs.db`) is omitted from the overlay without deleting the source files or existing saved entries.
 - Use "自动排列" in the management window to lay out all items in a compact grid within the group.

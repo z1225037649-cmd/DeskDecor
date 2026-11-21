@@ -32,3 +32,27 @@ $settingsOutput = Join-Path $PSScriptRoot 'SettingsStoreRegression.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Settings store regression test compilation failed' }
 & $settingsOutput
 if ($LASTEXITCODE -ne 0) { throw 'Settings store regression tests failed' }
+$layoutOutput = Join-Path $PSScriptRoot 'DesktopLayoutRecoveryRegression.exe'
+& $compiler /nologo /target:exe /r:System.dll /r:System.Drawing.dll /codepage:65001 ("/out:" + $layoutOutput) `
+    (Join-Path $projectRoot 'DesktopItem.cs') (Join-Path $projectRoot 'DesktopLayoutRecovery.cs') (Join-Path $projectRoot 'MonitorDpi.cs') `
+    (Join-Path $PSScriptRoot 'DesktopLayoutRecoveryRegression.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Desktop layout recovery regression compilation failed' }
+& $layoutOutput
+if ($LASTEXITCODE -ne 0) { throw 'Desktop layout recovery regression tests failed' }
+$overlayOutput = Join-Path $PSScriptRoot 'OverlayLayoutRegression.exe'
+$overlaySources = @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.cs' -File | ForEach-Object { $_.FullName })
+& $compiler /nologo /target:exe /main:OverlayLayoutRegression /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll /codepage:65001 ("/out:" + $overlayOutput) `
+    $overlaySources (Join-Path $PSScriptRoot 'OverlayLayoutRegression.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Overlay layout regression compilation failed' }
+& $overlayOutput
+if ($LASTEXITCODE -ne 0) { throw 'Overlay layout regression tests failed' }
+$settingsFormOutput = Join-Path $PSScriptRoot 'SettingsFormRegression.exe'
+& $compiler /nologo /target:exe /main:SettingsFormRegression /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll /codepage:65001 ("/out:" + $settingsFormOutput) `
+    $overlaySources (Join-Path $PSScriptRoot 'SettingsFormRegression.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Settings form regression compilation failed' }
+& $settingsFormOutput
+if ($LASTEXITCODE -ne 0) { throw 'Settings form regression tests failed' }
+& (Join-Path $PSScriptRoot 'run-group-search.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Group-search regression tests failed' }
+& (Join-Path $PSScriptRoot 'run-menu-lifetime.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Menu lifetime regression tests failed' }

@@ -20,6 +20,7 @@ namespace DeskDecor
         private string _settingsStatus;
         private bool _settingsSaveErrorShown;
         private bool _preserveRecoveredSettingsBackup;
+        private readonly bool _settingsFileWasMissing;
         private readonly System.Windows.Forms.Timer _refreshTimer;
         private readonly ShowSettingsMessageWindow _messageWindow;
         private readonly RegisteredWaitHandle _settingsWait;
@@ -34,6 +35,7 @@ namespace DeskDecor
         public AppContext(string dataPath, EventWaitHandle showSettingsEvent)
         {
             _dataPath = dataPath;
+            _settingsFileWasMissing = !File.Exists(dataPath);
             bool settingsRecovered;
             AppSettings settings = SettingsStore.Load(_dataPath, out _settingsStatus, out settingsRecovered);
             _preserveRecoveredSettingsBackup = settingsRecovered;
@@ -43,6 +45,23 @@ namespace DeskDecor
             _features.SetTaskbarTransparent(settings.TaskbarTransparent);
             _features.SetDesktopIconsHidden(settings.DesktopIconsHidden);
             _overlay = new OverlayForm(settings);
+            _overlay.ActiveGroupChanged += delegate
+            {
+                if (_settingsForm != null && !_settingsForm.IsDisposed)
+                {
+                    _settingsForm.RefreshItems();
+                    _settingsForm.RefreshGroups();
+                }
+                SaveSettings(this, EventArgs.Empty);
+            };
+            _overlay.GroupTitleChanged += delegate
+            {
+                if (_settingsForm != null && !_settingsForm.IsDisposed) _settingsForm.RefreshGroups();
+            };
+            if (_overlay.LayoutWasRecovered)
+                _settingsStatus = string.IsNullOrEmpty(_settingsStatus)
+                    ? "检测到保存的分组位置或屏幕缩放发生变化，已恢复到当前屏幕可见区域。"
+                    : _settingsStatus + " 分组位置也已恢复到当前屏幕。";
             _overlay.ItemActivated += OpenItem;
             _overlay.ItemMoved += SaveSettings;
             _overlay.ItemsChanged += delegate
@@ -102,13 +121,17 @@ namespace DeskDecor
             if (!string.IsNullOrEmpty(_settingsStatus))
                 _tray.ShowBalloonTip(7000, "配置恢复提示", _settingsStatus, ToolTipIcon.Warning);
             if (_startupDisabledByMove) ShowStartupLocationNotice();
+            // Keep the rolling backup intact on ordinary launches. A first-run
+            // config and recovered off-screen layout are saved immediately.
+            if (_settingsFileWasMissing || _overlay.LayoutWasRecovered)
+                SaveSettings(this, EventArgs.Empty);
 
             _refreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
             _refreshTimer.Tick += delegate
             {
                 _features.Refresh();
                 CheckStartupLocation(true);
-                _overlay.EnsureDesktopAttached();
+                _overlay.RefreshDesktopLayout();
                 SyncFeatureControls(_features.TaskbarTransparent, _features.DesktopIconsHidden);
                 if (++_diagnosticTicks == 3)
                     try { ShellDiagnostics.Write(); } catch { }
@@ -121,10 +144,27 @@ namespace DeskDecor
             if (_settingsForm == null || _settingsForm.IsDisposed)
             {
                 _settingsForm = new SettingsForm(_overlay.Settings);
+                _settingsForm.SetPersistenceStatus(_settingsStatus);
+                _settingsForm.SetAppearance(_overlay.Settings.IconSize, _overlay.Settings.Opacity);
                 _settingsForm.SettingsChanged += delegate
                 {
                     _overlay.RefreshItemsLayout();
                     SaveSettings(this, EventArgs.Empty);
+                };
+                _settingsForm.GroupChanged += delegate
+                {
+                    _overlay.SetActiveGroup(_overlay.Settings.ActiveGroupId);
+                };
+                _settingsForm.AppearanceChanged += delegate
+                {
+                    _overlay.Settings.IconSize = _settingsForm.IconSize;
+                    _overlay.Settings.Opacity = _settingsForm.ItemOpacity;
+                    _overlay.RefreshItemsLayout();
+                    SaveSettings(this, EventArgs.Empty);
+                };
+                _settingsForm.AddGroupRequested += delegate
+                {
+                    _overlay.AddGroup("新分组 " + (_overlay.Settings.Groups.Count + 1));
                 };
                 _settingsForm.StartupChanged += delegate { SetStartupEnabled(_settingsForm.StartupEnabled); };
                 _settingsForm.RenameGroupRequested += delegate
@@ -162,6 +202,7 @@ namespace DeskDecor
                 };
             }
             _settingsForm.SetOverlayVisible(_visible);
+            _overlay.SetActiveGroup(_overlay.Settings.ActiveGroupId);
             CheckStartupLocation(true);
             UpdateStartupControls();
             _settingsForm.SetFeatureStates(_features.TaskbarTransparent, _features.DesktopIconsHidden,
@@ -259,11 +300,15 @@ namespace DeskDecor
                 _preserveRecoveredSettingsBackup = false;
                 _settingsStatus = null;
                 _settingsSaveErrorShown = false;
+                if (_settingsForm != null && !_settingsForm.IsDisposed)
+                    _settingsForm.SetPersistenceStatus(null);
                 _overlay.InvalidateSurface();
             }
             catch (Exception ex)
             {
                 _settingsStatus = "配置保存失败，旧配置和备份已保留：" + ex.Message;
+                if (_settingsForm != null && !_settingsForm.IsDisposed)
+                    _settingsForm.SetPersistenceStatus(_settingsStatus);
                 if (!_settingsSaveErrorShown && _tray != null)
                 {
                     _settingsSaveErrorShown = true;
