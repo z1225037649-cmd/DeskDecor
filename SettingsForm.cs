@@ -34,6 +34,7 @@ namespace DeskDecor
         public event EventHandler RenameGroupRequested;
         public event EventHandler GroupChanged;
         public event EventHandler AddGroupRequested;
+        public event EventHandler RemoveGroupRequested;
         public event EventHandler AppearanceChanged;
         public bool StartupEnabled { get { return _startup.Checked; } }
         public int IconSize { get { return (int)_iconSize.Value; } }
@@ -108,6 +109,8 @@ namespace DeskDecor
             };
             Controls.Add(_groups);
             Button addGroup = Button("＋ 新建分组", 199, 318, delegate { if (AddGroupRequested != null) AddGroupRequested(this, EventArgs.Empty); });
+            Button removeGroup = Button("删除分组", 374, 318, delegate { if (RemoveGroupRequested != null) RemoveGroupRequested(this, EventArgs.Empty); });
+            _settingsHelp.SetToolTip(removeGroup, "分组中的入口会移到其他分组，不能删除最后一个分组");
             Button addLink = Button("＋ 添加文件", 24, 362, delegate { AddShortcut(); });
             Button addFolder = Button("添加文件夹", 199, 362, delegate { BeginAddFolder(); });
             Button remove = Button("移除选中", 374, 362, delegate { RemoveSelected(); });
@@ -129,7 +132,7 @@ namespace DeskDecor
                 Hide();
             });
             ((SoftButton)done).Primary = true;
-            Controls.Add(addGroup); Controls.Add(addLink); Controls.Add(addFolder); Controls.Add(remove); Controls.Add(arrange); Controls.Add(_toggleOverlay); Controls.Add(rename); Controls.Add(done);
+            Controls.Add(addGroup); Controls.Add(removeGroup); Controls.Add(addLink); Controls.Add(addFolder); Controls.Add(remove); Controls.Add(arrange); Controls.Add(_toggleOverlay); Controls.Add(rename); Controls.Add(done);
 
             Controls.Add(new Label { Text = "拖入文件可直接添加 · 右键图标可移除", AutoSize = true,
                 ForeColor = Color.FromArgb(111, 121, 134), Location = new Point(25, 649) });

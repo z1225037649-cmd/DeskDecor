@@ -56,3 +56,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Settings form regression tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Group-search regression tests failed' }
 & (Join-Path $PSScriptRoot 'run-menu-lifetime.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Menu lifetime regression tests failed' }
+& (Join-Path $PSScriptRoot 'run-entry-group.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Entry/group regression tests failed' }
+$headerOutput = Join-Path $PSScriptRoot 'HeaderDpiRegression.exe'
+& $compiler /nologo /target:exe /main:HeaderDpiRegression /r:System.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Xml.dll /codepage:65001 ("/out:" + $headerOutput) `
+    $overlaySources (Join-Path $PSScriptRoot 'HeaderDpiRegression.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Header DPI regression compilation failed' }
+& $headerOutput
+if ($LASTEXITCODE -ne 0) { throw 'Header DPI regression failed' }
+& (Join-Path $PSScriptRoot 'run-appcontext-persistence.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Application persistence regression failed' }

@@ -64,5 +64,32 @@ internal static class ReorderRegression
         Expect(items.Contains(metadata) && items.Count == 5 && items[items.Count - 1].Path == "A",
             "Reorder must retain every item, including hidden metadata");
         Console.WriteLine("PASS: trailing-space append retains all saved entries");
+
+        var a = new DesktopItem("A", 18, 18) { GroupId = "source" };
+        var b = new DesktopItem("B", 100, 18) { GroupId = "source" };
+        var c = new DesktopItem("C", 182, 18) { GroupId = "source" };
+        var otherOne = new DesktopItem("X", 600, 18) { GroupId = "other" };
+        var otherTwo = new DesktopItem("Y", 682, 18) { GroupId = "other" };
+        metadata = new DesktopItem("desktop.ini", 0, 0) { GroupId = "source" };
+        items = new List<DesktopItem> { a, otherOne, b, metadata, otherTwo, c };
+        visible = new List<DesktopItem> { a, b, c };
+        gesture.Begin(a, new Point(54, 54), new Size(8, 8));
+        Move(gesture, visible, 320, 160);
+        Expect(Order(items) == "AXBdesktop.iniYC", "A multi-group preview must not reorder the global collection");
+        Expect(gesture.Commit(items, visible), "Appending within one group must commit");
+        Expect(items.Count == 6 && items.Contains(metadata) &&
+            items.IndexOf(otherOne) < items.IndexOf(otherTwo) &&
+            items.IndexOf(b) < items.IndexOf(c) && items.IndexOf(c) < items.IndexOf(a),
+            "A group reorder must retain metadata, all entries and the other group's relative order");
+        Expect(a.GroupId == "source" && b.GroupId == "source" && c.GroupId == "source" &&
+            otherOne.GroupId == "other" && otherTwo.GroupId == "other" && otherOne.X == 600 && otherTwo.X == 682,
+            "Sorting one group must not reassign entries or move another group's tiles");
+        string beforeOutside = Order(items);
+        visible = new List<DesktopItem> { b, c, a };
+        gesture.Begin(b, new Point(136, 54), new Size(8, 8));
+        Move(gesture, visible, 620, 54);
+        Expect(!gesture.Commit(items, visible) && Order(items) == beforeOutside,
+            "Releasing over another group must cancel rather than move or reorder entries");
+        Console.WriteLine("PASS: multi-group reorder retains other-group order, metadata and assignments; cross-group release cancels");
     }
 }

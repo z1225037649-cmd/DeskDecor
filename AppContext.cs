@@ -166,6 +166,10 @@ namespace DeskDecor
                 {
                     _overlay.AddGroup("新分组 " + (_overlay.Settings.Groups.Count + 1));
                 };
+                _settingsForm.RemoveGroupRequested += delegate
+                {
+                    _overlay.RemoveActiveGroup();
+                };
                 _settingsForm.StartupChanged += delegate { SetStartupEnabled(_settingsForm.StartupEnabled); };
                 _settingsForm.RenameGroupRequested += delegate
                 {

@@ -32,7 +32,7 @@ Run `build.ps1` in PowerShell. The build uses the Windows .NET Framework C# comp
 
 On first run, existing entries from the user and public Desktop folders are shown. Items are references to their original paths; files are not copied or moved. The initialized empty-list marker prevents removed entries from being imported again.
 
-Live verification covers a single monitor at 125% scaling. Physical mixed-DPI monitors, display hot-plugging and input through the original hidden group-title editor remain unverified. See the [verification status](tests/verification-status-2026-11-21.md) for passed checks and remaining coverage.
+Live verification covers a single-monitor 125%→150%→125% scale round trip, input through the original group-title editor, group gestures, system toggles, wallpaper switching and Explorer restart recovery. Physical mixed-DPI monitors and display hot-plugging still need hardware verification. Startup registration and cleanup were tested without logging out or restarting Windows. See the [verification status](tests/verification-status-2026-11-21.md) for evidence and coverage limits.
 
 The EXE uses the Windows .NET Framework installed with Windows. It is a portable x64 app with an embedded native XAML engine; first use extracts the hash-checked engine and its notices into `DeskDecor.runtime/ExplorerTAP-2026.2-x64/` beside the EXE. Keep this folder while it runs. No installation or administrator rights are required. The XAML engine stays loaded in Explorer until Explorer exits; it restores the original taskbar appearance when DeskDecor stops.
 

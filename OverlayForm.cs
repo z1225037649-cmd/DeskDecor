@@ -223,6 +223,9 @@ namespace DeskDecor
                 _lastDesktopBounds = desktop;
                 Bounds = desktop;
             }
+            // Explorer can recreate its desktop owner without changing monitor
+            // geometry. Attachment is idempotent and repairs that lost owner.
+            EnsureDesktopAttached();
             bool recovered = RestoreLayoutToVisibleMonitor();
             if (recovered)
             {
@@ -231,7 +234,6 @@ namespace DeskDecor
             }
             if (desktopChanged || recovered)
             {
-                EnsureDesktopAttached();
                 Redraw();
             }
         }
@@ -287,6 +289,25 @@ namespace DeskDecor
             };
             Settings.Groups.Add(group);
             SetActiveGroup(group.Id);
+        }
+
+        public bool RemoveActiveGroup()
+        {
+            if (Settings.Groups.Count <= 1) return false;
+            GroupLayout removed = ActiveGroup;
+            GroupLayout fallback = Settings.Groups.Find(group => group != removed);
+            foreach (DesktopItem item in Settings.Items)
+                if (string.Equals(item.GroupId, removed.Id, StringComparison.OrdinalIgnoreCase))
+                    item.GroupId = fallback.Id;
+            Settings.Groups.Remove(removed);
+            Settings.Group = Settings.Groups[0];
+            _selectedGroupId = fallback.Id;
+            Settings.ActiveGroupId = fallback.Id;
+            LayoutItemsInGroup(fallback);
+            Redraw();
+            if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
+            if (ItemsChanged != null) ItemsChanged(this, EventArgs.Empty);
+            return true;
         }
 
         private bool ActivateGroupAt(Point point)
@@ -516,6 +537,12 @@ namespace DeskDecor
                 Math.Max(1, ActiveGroup.Width - Scale(104)), Scale(26));
         }
 
+        private Rectangle CollapseLabelBounds()
+        {
+            Rectangle button = CollapseButtonBounds();
+            return new Rectangle(button.Left + Scale(9), button.Top, Scale(32), button.Height);
+        }
+
         public void RenameGroup()
         {
             if (_titleEditor != null && !_titleEditor.IsDisposed)
@@ -571,7 +598,7 @@ namespace DeskDecor
                     DrawOutlinedLabel(g, title, label, format, 255);
                 }
                 DrawOutlinedLabel(g, ActiveGroup.Collapsed ? "展开" : "收起",
-                    new RectangleF(button.Left + 9, button.Top, 32, button.Height), format, 255);
+                    CollapseLabelBounds(), format, 255);
             }
             using (Pen pen = new Pen(Color.FromArgb(225, Color.White), 1.4F))
             {
