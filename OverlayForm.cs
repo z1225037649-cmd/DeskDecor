@@ -226,13 +226,14 @@ namespace DeskDecor
             // Explorer can recreate its desktop owner without changing monitor
             // geometry. Attachment is idempotent and repairs that lost owner.
             EnsureDesktopAttached();
+            bool iconsChanged = _icons.RefreshChanged();
             bool recovered = RestoreLayoutToVisibleMonitor();
             if (recovered)
             {
                 foreach (GroupLayout group in Settings.Groups) LayoutItemsInGroup(group);
                 if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
             }
-            if (desktopChanged || recovered)
+            if (desktopChanged || recovered || iconsChanged)
             {
                 Redraw();
             }
@@ -441,8 +442,7 @@ namespace DeskDecor
                 { g.FillPath(fill, hover); g.DrawPath(line, hover); }
             }
             Rectangle iconRect = new Rectangle(tile.Left + (TileWidth - iconSize) / 2, tile.Top + Scale(6), iconSize, iconSize);
-            Bitmap icon = _icons.GetOutlined(item.Path, iconSize);
-            iconRect.Inflate(2, 2);
+            Bitmap icon = _icons.GetScaled(item.Path, iconSize);
             using (ImageAttributes attributes = new ImageAttributes())
             {
                 ColorMatrix matrix = new ColorMatrix();

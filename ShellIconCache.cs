@@ -14,50 +14,121 @@ namespace DeskDecor
     {
         private readonly Dictionary<string, Bitmap> _images =
             new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, Bitmap> _outlined =
-            new Dictionary<string, Bitmap>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Dictionary<int, Bitmap>> _scaled =
+            new Dictionary<string, Dictionary<int, Bitmap>>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IconStamp> _stamps =
+            new Dictionary<string, IconStamp>(StringComparer.OrdinalIgnoreCase);
+        private readonly Func<string, Bitmap> _loadImage;
 
-        public Bitmap GetOutlined(string path, int size)
+        public ShellIconCache() : this(LoadShellImage) { }
+
+        internal ShellIconCache(Func<string, Bitmap> loadImage)
         {
-            string key = size + "|" + path;
-            Bitmap result;
-            if (_outlined.TryGetValue(key, out result)) return result;
-            using (var scaled = new Bitmap(size, size, PixelFormat.Format32bppPArgb))
+            if (loadImage == null) throw new ArgumentNullException("loadImage");
+            _loadImage = loadImage;
+        }
+
+        public Bitmap GetScaled(string path, int size)
+        {
+            if (size <= 0) throw new ArgumentOutOfRangeException("size");
+            Bitmap source = Get(path);
+            Dictionary<int, Bitmap> sizes;
+            if (!_scaled.TryGetValue(path, out sizes))
             {
-                using (Graphics g = Graphics.FromImage(scaled))
-                {
-                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                    g.DrawImage(Get(path), new Rectangle(0, 0, size, size));
-                }
-                result = new Bitmap(size + 4, size + 4, PixelFormat.Format32bppPArgb);
-                // Dilate the alpha silhouette, never the rectangular image bounds.
-                // Taking the maximum avoids dark build-up along detailed edges.
-                for (int y = 0; y < result.Height; y++)
-                    for (int x = 0; x < result.Width; x++)
-                    {
-                        int alpha = 0;
-                        for (int dy = -1; dy <= 1; dy++)
-                            for (int dx = -1; dx <= 1; dx++)
-                            {
-                                int sx = x - 2 + dx, sy = y - 2 + dy;
-                                if (sx >= 0 && sx < size && sy >= 0 && sy < size)
-                                    alpha = Math.Max(alpha, scaled.GetPixel(sx, sy).A * 150 / 255);
-                            }
-                        int shadowX = x - 2, shadowY = y - 4;
-                        if (shadowX >= 0 && shadowX < size && shadowY >= 0 && shadowY < size)
-                            alpha = Math.Max(alpha, scaled.GetPixel(shadowX, shadowY).A * 60 / 255);
-                        if (alpha > 0) result.SetPixel(x, y, Color.FromArgb(alpha, 0, 0, 0));
-                    }
-                using (Graphics g = Graphics.FromImage(result)) g.DrawImageUnscaled(scaled, 2, 2);
+                sizes = new Dictionary<int, Bitmap>();
+                _scaled.Add(path, sizes);
             }
-            _outlined[key] = result;
-            return result;
+            Bitmap result;
+            if (sizes.TryGetValue(size, out result)) return result;
+            result = new Bitmap(size, size, PixelFormat.Format32bppPArgb);
+            try
+            {
+                using (Graphics g = Graphics.FromImage(result))
+                {
+                    // Keep the Shell artwork and alpha unchanged. Dilating a
+                    // dark outline closes the gaps in monochrome app icons.
+                    g.CompositingMode = CompositingMode.SourceCopy;
+                    if (source.Width == size && source.Height == size)
+                        g.DrawImageUnscaled(source, 0, 0);
+                    else
+                    {
+                        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                        g.DrawImage(source, new Rectangle(0, 0, size, size));
+                    }
+                }
+                sizes.Add(size, result);
+                return result;
+            }
+            catch { result.Dispose(); throw; }
         }
 
         public Bitmap Get(string path)
         {
             Bitmap image;
             if (_images.TryGetValue(path, out image)) return image;
+            // Record metadata before loading: a replacement during extraction
+            // must still be detected on the next refresh.
+            IconStamp stamp = ReadStamp(path);
+            image = _loadImage(path) ?? SystemIcons.Application.ToBitmap();
+            _images.Add(path, image);
+            _stamps.Add(path, stamp);
+            return image;
+        }
+
+        public bool RefreshChanged()
+        {
+            var changed = new List<string>();
+            foreach (KeyValuePair<string, IconStamp> entry in _stamps)
+                if (!entry.Value.Equals(ReadStamp(entry.Key))) changed.Add(entry.Key);
+            foreach (string path in changed)
+            {
+                _images[path].Dispose();
+                _images.Remove(path);
+                _stamps.Remove(path);
+                Dictionary<int, Bitmap> sizes;
+                if (_scaled.TryGetValue(path, out sizes))
+                {
+                    foreach (Bitmap image in sizes.Values) image.Dispose();
+                    _scaled.Remove(path);
+                }
+            }
+            return changed.Count != 0;
+        }
+
+        private struct IconStamp : IEquatable<IconStamp>
+        {
+            public bool Exists, IsDirectory;
+            public long LastWriteTicks, Length;
+
+            public bool Equals(IconStamp other)
+            {
+                return Exists == other.Exists && IsDirectory == other.IsDirectory &&
+                    LastWriteTicks == other.LastWriteTicks && Length == other.Length;
+            }
+        }
+
+        private static IconStamp ReadStamp(string path)
+        {
+            try
+            {
+                var file = new FileInfo(path);
+                if (file.Exists) return new IconStamp { Exists = true,
+                    LastWriteTicks = file.LastWriteTimeUtc.Ticks, Length = file.Length };
+                var directory = new DirectoryInfo(path);
+                if (directory.Exists) return new IconStamp { Exists = true, IsDirectory = true,
+                    LastWriteTicks = directory.LastWriteTimeUtc.Ticks };
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (ArgumentException) { }
+            catch (NotSupportedException) { }
+            catch (System.Security.SecurityException) { }
+            return new IconStamp();
+        }
+
+        private static Bitmap LoadShellImage(string path)
+        {
+            Bitmap image;
             SHFILEINFO info = new SHFILEINFO();
             uint flags = 0x100; // SHGFI_ICON | SHGFI_LARGEICON (32px source)
             uint attributes = Directory.Exists(path) ? 0x10U : 0x80U;
@@ -73,7 +144,6 @@ namespace DeskDecor
             }
             catch { image = SystemIcons.Application.ToBitmap(); }
             finally { if (info.Icon != IntPtr.Zero) DestroyIcon(info.Icon); }
-            _images[path] = image;
             return image;
         }
 
@@ -81,8 +151,10 @@ namespace DeskDecor
         {
             foreach (Bitmap image in _images.Values) image.Dispose();
             _images.Clear();
-            foreach (Bitmap image in _outlined.Values) image.Dispose();
-            _outlined.Clear();
+            foreach (Dictionary<int, Bitmap> sizes in _scaled.Values)
+                foreach (Bitmap image in sizes.Values) image.Dispose();
+            _scaled.Clear();
+            _stamps.Clear();
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
