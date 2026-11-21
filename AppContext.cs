@@ -17,6 +17,9 @@ namespace DeskDecor
         private bool _startupEnabled;
         private bool _startupDisabledByMove;
         private string _startupCheckError;
+        private string _settingsStatus;
+        private bool _settingsSaveErrorShown;
+        private bool _preserveRecoveredSettingsBackup;
         private readonly System.Windows.Forms.Timer _refreshTimer;
         private readonly ShowSettingsMessageWindow _messageWindow;
         private readonly RegisteredWaitHandle _settingsWait;
@@ -31,7 +34,9 @@ namespace DeskDecor
         public AppContext(string dataPath, EventWaitHandle showSettingsEvent)
         {
             _dataPath = dataPath;
-            AppSettings settings = SettingsStore.Load(_dataPath);
+            bool settingsRecovered;
+            AppSettings settings = SettingsStore.Load(_dataPath, out _settingsStatus, out settingsRecovered);
+            _preserveRecoveredSettingsBackup = settingsRecovered;
             _startup = new StartupRegistration(Application.ExecutablePath);
             CheckStartupLocation(false);
             _features = new DesktopFeatures();
@@ -94,6 +99,8 @@ namespace DeskDecor
             _tray.ContextMenuStrip = menu;
             _tray.Visible = true;
             _tray.DoubleClick += delegate { ShowSettings(false); };
+            if (!string.IsNullOrEmpty(_settingsStatus))
+                _tray.ShowBalloonTip(7000, "配置恢复提示", _settingsStatus, ToolTipIcon.Warning);
             if (_startupDisabledByMove) ShowStartupLocationNotice();
 
             _refreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
@@ -246,8 +253,23 @@ namespace DeskDecor
 
         private void SaveSettings(object sender, EventArgs e)
         {
-            SettingsStore.Save(_dataPath, _overlay.Settings);
-            _overlay.InvalidateSurface();
+            try
+            {
+                SettingsStore.Save(_dataPath, _overlay.Settings, _preserveRecoveredSettingsBackup);
+                _preserveRecoveredSettingsBackup = false;
+                _settingsStatus = null;
+                _settingsSaveErrorShown = false;
+                _overlay.InvalidateSurface();
+            }
+            catch (Exception ex)
+            {
+                _settingsStatus = "配置保存失败，旧配置和备份已保留：" + ex.Message;
+                if (!_settingsSaveErrorShown && _tray != null)
+                {
+                    _settingsSaveErrorShown = true;
+                    _tray.ShowBalloonTip(6000, "设置未能保存", _settingsStatus, ToolTipIcon.Error);
+                }
+            }
         }
 
         private void OpenItem(object sender, DesktopItem item)

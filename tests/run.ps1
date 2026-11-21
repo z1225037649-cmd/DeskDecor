@@ -26,3 +26,9 @@ $inlineOutput = Join-Path $PSScriptRoot 'InlineTitleRegression.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Inline title regression compilation failed' }
 & $inlineOutput
 if ($LASTEXITCODE -ne 0) { throw 'Inline title regression tests failed' }
+$settingsOutput = Join-Path $PSScriptRoot 'SettingsStoreRegression.exe'
+& $compiler /nologo /target:exe /r:System.dll /r:System.Xml.dll /codepage:65001 ("/out:" + $settingsOutput) `
+    (Join-Path $projectRoot 'DesktopItem.cs') (Join-Path $PSScriptRoot 'SettingsStoreRegression.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Settings store regression test compilation failed' }
+& $settingsOutput
+if ($LASTEXITCODE -ne 0) { throw 'Settings store regression tests failed' }
