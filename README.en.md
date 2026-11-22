@@ -8,6 +8,8 @@ Run `build.ps1` in a normal user PowerShell session. The build uses the Windows 
 
 `package.ps1` also refreshes the ready-to-run `dist/DeskDecor-portable-x64/DeskDecor.exe`, preserving existing settings and personal files in that folder. The shared ZIP excludes those personal files. Exit this portable copy from its tray menu before packaging. Files extracted inside a restricted development folder can inherit Low integrity and fail to register a tray icon. For local verification, use the generated portable folder or extract the ZIP into an ordinary user folder, such as a new folder on the Desktop.
 
+Packaging sets the output folder and both final ZIP files to Medium integrity and removes the ZIP download markers. A Low-integrity ZIP can cause the Windows compressed-folder interface to add `ZoneId=3` to extracted executables even when the ZIP has no `Zone.Identifier` stream. Clearing only the root EXE's marker does not fix that case.
+
 ## Upgrading from a shared package
 
 Unpack the new `DeskDecor-portable-x64.zip` into a new permanent folder and run its `DeskDecor.exe`. No network connection is required. If that folder has no settings, the app checks the current user's running older copy, last successfully launched location and startup registration. One valid source is imported automatically; multiple sources require selecting the old executable. Existing destination settings are preserved, and the drive is not scanned.
@@ -19,6 +21,8 @@ Starting with 1.1.1, personal files, folders and referenced content inside the o
 Increase `AssemblyInfo.cs` before testing, building and packaging each new release: only higher versions take over older configurations. Share packages exclude all personal settings and migration backups.
 
 ## Use
+
+If Windows displays an Open File security warning, verify that the ZIP came from this project, open its Properties, select Unblock and Apply, then extract it into a new folder. An already extracted copy needs its `DeskDecor.exe` unblocked separately. The program is currently unsigned; download or transfer software can add an Internet marker again, so successful local packaging checks cannot guarantee that every recipient will see no warnings.
 
 - Double-click `DeskDecor.exe` to show the desktop items.
 - Right-click the tray icon to add a shortcut/file or folder, manage items, toggle the overlay, or exit.

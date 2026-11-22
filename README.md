@@ -10,6 +10,8 @@
 
 首次启动读取当前电脑的桌面项目。发布包不包含开发者的个人快捷方式、配置或日志。
 
+若 Windows 提示“打开文件—安全警告”，确认压缩包来自本项目后，可在解压前右键 ZIP →“属性”→勾选“解除锁定”→“应用”，再解压到新文件夹。已经解压的副本需要对 `DeskDecor.exe` 单独解除锁定。程序目前没有数字签名；外部下载或传输软件可能重新添加互联网标记，本地打包检查通过不代表所有接收电脑都不会提示。
+
 ## 功能
 
 - 透明分组框、16–32 逻辑像素可调图标（随 DPI 缩放），文字和图标带细黑色轮廓及阴影。
@@ -49,6 +51,8 @@
 Windows x64 下在普通用户 PowerShell 环境依次运行 `tests/run.ps1`、`build.ps1` 和 `package.ps1`。使用 Windows 自带的 .NET Framework 编译器，构建会检查所附官方 ExplorerTAP.dll 的 SHA-256，并修正输出 EXE 的完整性标记。GitHub Actions 同样执行检查并提供便携包。
 
 打包同时更新可直接运行的 `dist/DeskDecor-portable-x64/DeskDecor.exe`，保留该目录已有的个人配置和文件；分享用 ZIP 仍不包含这些个人内容。打包前请先从托盘正常退出这个便携副本。受限开发目录可能让新解压文件继承低完整性标记，导致托盘缺失；本地验证请使用打包生成的便携目录，或将 ZIP 解压到普通用户文件夹。
+
+打包还会将输出目录和两个最终 ZIP 设置为 Medium integrity，并清除 ZIP 的下载标记。低完整性 ZIP 即使没有 `Zone.Identifier`，Windows 压缩文件夹接口在解压时也可能给 EXE 添加 `ZoneId=3`；仅清除根目录 EXE 的标记不足以修复这一情况。
 
 本集成版本以 [GPL v3](LICENSE.md) 发布，包含未经修改的官方 TranslucentTB 2026.2 x64 ExplorerTAP.dll 和匹配的上游源码归档。详见 [第三方声明](THIRD-PARTY-NOTICES.md)。自动化检查不等于覆盖所有系统及壁纸组合的实际桌面测试。
 

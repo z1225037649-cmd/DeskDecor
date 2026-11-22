@@ -5,6 +5,13 @@ New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
 if ((Get-Item -LiteralPath $distRoot).Attributes -band [IO.FileAttributes]::ReparsePoint) {
     throw 'The package output directory must not be a reparse point'
 }
+# Explorer treats a Low-integrity ZIP as Internet content during extraction,
+# even when the archive has no Zone.Identifier stream. Prepare the output tree
+# before creating staging files, then normalize each published ZIP explicitly.
+$integrityOutput = & (Join-Path $env:WINDIR 'System32\icacls.exe') $distRoot /setintegritylevel '(OI)(CI)M' 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw ('Could not prepare the package output folder for desktop use. Run package.ps1 from a normal user PowerShell session. ' + ($integrityOutput -join [Environment]::NewLine))
+}
 $stageRoot = Join-Path $distRoot ('.package-' + [Guid]::NewGuid().ToString('N'))
 $sourceRoot = Join-Path $stageRoot 'DeskDecor-source'
 New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
@@ -65,7 +72,17 @@ try {
         throw ('Could not prepare the portable executable for desktop use. ' + ($integrityOutput -join [Environment]::NewLine))
     }
     foreach ($name in @('DeskDecor-source.zip', 'DeskDecor-portable-x64.zip')) {
-        Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination (Join-Path $distRoot $name) -Force
+        $destination = Join-Path $distRoot $name
+        if ((Test-Path -LiteralPath $destination) -and
+            ((Get-Item -LiteralPath $destination).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw ('A distribution archive must not be a reparse point: ' + $destination)
+        }
+        Copy-Item -LiteralPath (Join-Path $stageRoot $name) -Destination $destination -Force
+        Unblock-File -LiteralPath $destination
+        $integrityOutput = & (Join-Path $env:WINDIR 'System32\icacls.exe') $destination /setintegritylevel M 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw ('Could not prepare the distribution archive for desktop use. ' + ($integrityOutput -join [Environment]::NewLine))
+        }
     }
     Write-Host ('Run: ' + $portableExecutable)
     Write-Host ('Portable: ' + (Join-Path $distRoot 'DeskDecor-portable-x64.zip'))
