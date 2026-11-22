@@ -74,3 +74,5 @@ $iconsOutput = Join-Path $PSScriptRoot 'ShellIconCacheRegression.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Shell icon cache regression compilation failed' }
 & $iconsOutput
 if ($LASTEXITCODE -ne 0) { throw 'Shell icon cache regression failed' }
+& (Join-Path $PSScriptRoot 'run-local-upgrade.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Local upgrade regression failed' }

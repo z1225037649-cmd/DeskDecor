@@ -56,6 +56,18 @@ internal static class AppContextPersistenceRegression
                 Expect(!form.Visible && !overlay.Visible && !overlay.IsHandleCreated,
                     "Application event-chain checks must not show or attach test windows");
                 Console.WriteLine("PASS: actual AppContext deletion event chain saves once and retains the exact pre-deletion backup");
+                bool exited = false;
+                context.ThreadExit += delegate { exited = true; };
+                overlay.Settings.Group.Title = "saved before upgrade handoff";
+                context.StartUpgradeHandoff();
+                using (var handoff = System.Threading.EventWaitHandle.OpenExisting(LocalUpgrade.PrepareEventName)) handoff.Set();
+                var deadline = System.Diagnostics.Stopwatch.StartNew();
+                while (!exited && deadline.ElapsedMilliseconds < 1500)
+                { Application.DoEvents(); System.Threading.Thread.Sleep(10); }
+                if (exited) context = null;
+                Expect(exited && SettingsStore.Load(path).Group.Title == "saved before upgrade handoff",
+                    "An upgrade request must persist current settings and exit through the real message-window event chain");
+                Console.WriteLine("PASS: isolated upgrade handoff saves current configuration and closes normally through the real application event chain");
             }
             catch (Exception error)
             {

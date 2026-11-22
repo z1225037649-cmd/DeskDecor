@@ -21,4 +21,6 @@ $args = @('/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/codepage
   ('/out:' + $out)) + $sources
 & $csc $args
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
-Write-Host ('Built: ' + $out)
+$builtVersion = [Reflection.AssemblyName]::GetAssemblyName($out).Version
+if ($builtVersion -le [Version]'0.0.0.0') { throw 'The executable must have an explicit release version' }
+Write-Host ('Built: ' + $out + ' (' + $builtVersion.ToString(4) + ')')

@@ -6,6 +6,7 @@ DeskDecor.runtime/
 DeskDecor.shell.txt
 DeskDecor.surface.png
 .preview/
+.migration/
 
 # Generated output
 dist/

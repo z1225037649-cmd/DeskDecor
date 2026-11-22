@@ -7,6 +7,7 @@ namespace DeskDecor
     {
         public const int WM_NCHITTEST = 0x0084;
         public const int WM_SHOW_SETTINGS = 0x8000 + 41;
+        public const int WM_PREPARE_UPGRADE = 0x8000 + 42;
         public const uint MB_OK = 0x00000000;
         public const uint MB_ICONINFORMATION = 0x00000040;
         public const uint MB_ICONERROR = 0x00000010;
