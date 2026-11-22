@@ -199,11 +199,6 @@ namespace DeskDecor
                     SaveSettings(this, EventArgs.Empty);
                     SyncFeatureControls(_features.TaskbarTransparent, _features.DesktopIconsHidden);
                 };
-                _settingsForm.VisibleChanged += delegate
-                {
-                    if (_settingsForm.Visible) _overlay.Hide();
-                    else if (_visible) _overlay.ShowDesktopSurface();
-                };
             }
             _settingsForm.SetOverlayVisible(_visible);
             _overlay.SetActiveGroup(_overlay.Settings.ActiveGroupId);
@@ -212,8 +207,10 @@ namespace DeskDecor
             _settingsForm.SetFeatureStates(_features.TaskbarTransparent, _features.DesktopIconsHidden,
                 _features.TaskbarStatus);
             _settingsForm.RefreshItems();
-            _overlay.Hide();
             _settingsForm.Show();
+            // Settings and the desktop surface stay visible together for live
+            // appearance edits, unless the user explicitly hides the widgets.
+            if (_visible) _overlay.ShowDesktopSurface();
             _settingsForm.WindowState = FormWindowState.Normal;
             _settingsForm.TopMost = true;
             Native.ShowWindow(_settingsForm.Handle, Native.SW_SHOW);

@@ -66,6 +66,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Header DPI regression compilation failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Header DPI regression failed' }
 & (Join-Path $PSScriptRoot 'run-appcontext-persistence.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Application persistence regression failed' }
+& (Join-Path $PSScriptRoot 'run-settings-visibility.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Settings visibility regression failed' }
 $iconsOutput = Join-Path $PSScriptRoot 'ShellIconCacheRegression.exe'
 & $compiler /nologo /target:exe /r:System.dll /r:System.Drawing.dll /codepage:65001 ("/out:" + $iconsOutput) `
     (Join-Path $projectRoot 'ShellIconCache.cs') (Join-Path $PSScriptRoot 'ShellIconCacheRegression.cs')
