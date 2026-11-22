@@ -4,7 +4,9 @@ Windows desktop shortcut and folder overlay. It runs as a portable executable an
 
 ## Build
 
-Run `build.ps1` in PowerShell. The build uses the Windows .NET Framework C# compiler, targets x64, and embeds the official ExplorerTAP 2026.2 DLL from `vendor/TranslucentTB-2026.2-x64`. The script checks the DLL hash before compilation.
+Run `build.ps1` in a normal user PowerShell session. The build uses the Windows .NET Framework C# compiler, targets x64, and embeds the official ExplorerTAP 2026.2 DLL from `vendor/TranslucentTB-2026.2-x64`. The script checks the DLL hash before compilation and sets the output EXE to Medium integrity.
+
+`package.ps1` also refreshes the ready-to-run `dist/DeskDecor-portable-x64/DeskDecor.exe`, preserving existing settings and personal files in that folder. The shared ZIP excludes those personal files. Exit this portable copy from its tray menu before packaging. Files extracted inside a restricted development folder can inherit Low integrity and fail to register a tray icon. For local verification, use the generated portable folder or extract the ZIP into an ordinary user folder, such as a new folder on the Desktop.
 
 ## Upgrading from a shared package
 

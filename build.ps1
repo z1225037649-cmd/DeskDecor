@@ -23,6 +23,12 @@ $args = @('/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/codepage
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 # A rebuild can retain the previous EXE's download marker.
 Unblock-File -LiteralPath $out
+# Executables built in a Low-integrity workspace inherit that label, even when
+# later double-clicked in Explorer. Tray registration requires normal desktop access.
+$integrityOutput = & (Join-Path $env:WINDIR 'System32\icacls.exe') $out /setintegritylevel M 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw ('Could not prepare the executable for desktop use. Run build.ps1 from a normal user PowerShell session. ' + ($integrityOutput -join [Environment]::NewLine))
+}
 $builtVersion = [Reflection.AssemblyName]::GetAssemblyName($out).Version
 if ($builtVersion -le [Version]'0.0.0.0') { throw 'The executable must have an explicit release version' }
 Write-Host ('Built: ' + $out + ' (' + $builtVersion.ToString(4) + ')')

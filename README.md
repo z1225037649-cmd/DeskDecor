@@ -5,7 +5,7 @@
 ## 下载与使用
 
 1. 在 [Releases](https://github.com/z1225037649-cmd/DeskDecor/releases) 下载 `DeskDecor-portable-x64.zip`。
-2. 完整解压到可写入的文件夹，再双击 `DeskDecor.exe`。无需安装或管理员权限。
+2. 完整解压到普通用户可写入的文件夹（例如桌面上新建的 `DeskDecor` 文件夹），再双击 `DeskDecor.exe`。无需安装或管理员权限。
 3. 通过系统托盘菜单管理项目、显示或隐藏分组，以及启用可选功能。
 
 首次启动读取当前电脑的桌面项目。发布包不包含开发者的个人快捷方式、配置或日志。
@@ -46,7 +46,9 @@
 
 ## 构建与许可
 
-Windows x64 下依次运行 `tests/run.ps1`、`build.ps1` 和 `package.ps1`。使用 Windows 自带的 .NET Framework 编译器，构建会检查所附官方 ExplorerTAP.dll 的 SHA-256。GitHub Actions 同样执行检查并提供便携包。
+Windows x64 下在普通用户 PowerShell 环境依次运行 `tests/run.ps1`、`build.ps1` 和 `package.ps1`。使用 Windows 自带的 .NET Framework 编译器，构建会检查所附官方 ExplorerTAP.dll 的 SHA-256，并修正输出 EXE 的完整性标记。GitHub Actions 同样执行检查并提供便携包。
+
+打包同时更新可直接运行的 `dist/DeskDecor-portable-x64/DeskDecor.exe`，保留该目录已有的个人配置和文件；分享用 ZIP 仍不包含这些个人内容。打包前请先从托盘正常退出这个便携副本。受限开发目录可能让新解压文件继承低完整性标记，导致托盘缺失；本地验证请使用打包生成的便携目录，或将 ZIP 解压到普通用户文件夹。
 
 本集成版本以 [GPL v3](LICENSE.md) 发布，包含未经修改的官方 TranslucentTB 2026.2 x64 ExplorerTAP.dll 和匹配的上游源码归档。详见 [第三方声明](THIRD-PARTY-NOTICES.md)。自动化检查不等于覆盖所有系统及壁纸组合的实际桌面测试。
 
