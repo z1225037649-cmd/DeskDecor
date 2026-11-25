@@ -79,6 +79,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Shell icon cache regression failed' }
     & (Join-Path $PSScriptRoot 'run-first-run-isolation.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'First-run isolation regression failed' }
+    & (Join-Path $PSScriptRoot 'RenderingInteraction.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Rendering interaction regression failed' }
     & (Join-Path $PSScriptRoot 'RenderingPerformance.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Rendering performance regression failed' }
 }

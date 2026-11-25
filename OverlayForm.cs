@@ -38,6 +38,8 @@ namespace DeskDecor
         private readonly Dictionary<LabelGeometryKey, LabelGeometry> _labelGeometry =
             new Dictionary<LabelGeometryKey, LabelGeometry>();
         private readonly Queue<LabelGeometryKey> _labelGeometryOrder = new Queue<LabelGeometryKey>();
+        private int _redrawDepth;
+        private bool _redrawPending;
         private bool _movingGroup;
         private bool _resizingGroup;
         private readonly ItemReorderGesture _reorder = new ItemReorderGesture();
@@ -347,6 +349,7 @@ namespace DeskDecor
 
         private void Redraw()
         {
+            if (_redrawDepth != 0) { _redrawPending = true; return; }
             if (!IsHandleCreated || IsDisposed) return;
             Bitmap bitmap = _surface.Begin(Width, Height);
             if (bitmap == null) return;
@@ -376,20 +379,28 @@ namespace DeskDecor
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.InterpolationMode = InterpolationMode.HighQualityBicubic;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            RectangleF visible = g.VisibleClipBounds;
             try
             {
                 foreach (GroupLayout group in Settings.Groups)
                 {
                     _renderingGroup = group;
+                    List<DesktopItem> items = DisplayItems();
                     DrawGroupFrame(g);
-                    DrawGroupHeader(g);
+                    DrawGroupHeader(g, items.Count);
                     if (group.Collapsed) continue;
-                    foreach (DesktopItem item in DisplayItems())
-                        if (!IsDesktopMetadata(item.Path)) DrawItem(g, item);
+                    foreach (DesktopItem item in items)
+                    {
+                        // Include a conservative margin for the label outline,
+                        // shadow and hover border at the edge of the surface.
+                        Rectangle bounds = TileBounds(item);
+                        bounds.Inflate(Scale(4), Scale(4));
+                        if (visible.IntersectsWith(bounds)) DrawItem(g, item);
+                    }
                     if (_reorder.Dragging && _reorder.Source != null &&
                         string.Equals(group.Id, _selectedGroupId, StringComparison.OrdinalIgnoreCase))
                     {
-                        DrawDropIndicator(g);
+                        DrawDropIndicator(g, items);
                         DesktopItem source = _reorder.Source;
                         Rectangle ghost = new Rectangle(_reorder.Pointer.X - (_reorder.PressPoint.X - source.X),
                             _reorder.Pointer.Y - (_reorder.PressPoint.Y - source.Y), TileWidth, TileHeight);
@@ -398,6 +409,25 @@ namespace DeskDecor
                 }
             }
             finally { _renderingGroup = null; }
+        }
+
+        // Mouse gestures can change hover, geometry and ordering together. Draw
+        // their final state once, synchronously before the event returns.
+        private RedrawScope BatchRedraw() { return new RedrawScope(this); }
+
+        private struct RedrawScope : IDisposable
+        {
+            private readonly OverlayForm _owner;
+            public RedrawScope(OverlayForm owner)
+            { _owner = owner; owner._redrawDepth++; }
+            public void Dispose()
+            {
+                if (--_owner._redrawDepth == 0 && _owner._redrawPending)
+                {
+                    _owner._redrawPending = false;
+                    _owner.Redraw();
+                }
+            }
         }
 
         private static bool IsDesktopMetadata(string path)
@@ -559,9 +589,8 @@ namespace DeskDecor
             }
         }
 
-        private void DrawDropIndicator(Graphics g)
+        private void DrawDropIndicator(Graphics g, List<DesktopItem> items)
         {
-            var items = DisplayItems();
             int slot = _reorder.DropIndex;
             int from = items.IndexOf(_reorder.Source);
             if (slot < 0 || items.Count == 0 || slot == from || slot == from + 1) return;
@@ -654,7 +683,7 @@ namespace DeskDecor
             EnsureDesktopAttached();
         }
 
-        private void DrawGroupHeader(Graphics g)
+        private void DrawGroupHeader(Graphics g, int itemCount)
         {
             Rectangle button = CollapseButtonBounds();
             if (_collapseHovered)
@@ -666,7 +695,7 @@ namespace DeskDecor
             using (StringFormat format = new StringFormat { LineAlignment = StringAlignment.Center,
                 Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap })
             {
-                string title = (_externalDropHover ? "松开添加" : ActiveGroup.DisplayTitle) + " · " + DisplayItems().Count;
+                string title = (_externalDropHover ? "松开添加" : ActiveGroup.DisplayTitle) + " · " + itemCount;
                 RectangleF label = TitleBounds();
                 if (_titleEditor == null)
                 {
@@ -686,18 +715,25 @@ namespace DeskDecor
 
         private void ToggleCollapsed()
         {
-            CancelItemDrag();
-            ActiveGroup.Collapsed = !ActiveGroup.Collapsed;
-            UpdateHover(new Point(int.MinValue, int.MinValue));
-            Redraw();
-            if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
+            using (BatchRedraw())
+            {
+                CancelItemDrag();
+                ActiveGroup.Collapsed = !ActiveGroup.Collapsed;
+                UpdateHover(new Point(int.MinValue, int.MinValue));
+                Redraw();
+                if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
+            }
         }
 
         public void RefreshItemsLayout()
         {
-            CancelItemDrag();
-            foreach (GroupLayout group in Settings.Groups) LayoutItemsInGroup(group);
-            Redraw();
+            using (BatchRedraw())
+            {
+                _icons.RetainPaths(Settings.Items.ConvertAll(item => item.Path));
+                CancelItemDrag();
+                foreach (GroupLayout group in Settings.Groups) LayoutItemsInGroup(group);
+                Redraw();
+            }
         }
 
         private void NotifyItemsChanged()
@@ -820,8 +856,9 @@ namespace DeskDecor
 
         private System.Collections.Generic.List<DesktopItem> DisplayItems()
         {
-            return Settings.Items.FindAll(item => !IsDesktopMetadata(item.Path) &&
-                string.Equals(item.GroupId, ActiveGroup.Id, StringComparison.OrdinalIgnoreCase));
+            string groupId = ActiveGroup.Id;
+            return Settings.Items.FindAll(item => string.Equals(item.GroupId, groupId, StringComparison.OrdinalIgnoreCase) &&
+                !IsDesktopMetadata(item.Path));
         }
 
         private void UpdateItemDrag(Point p)
@@ -908,123 +945,129 @@ namespace DeskDecor
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
-            base.OnMouseMove(e);
-            Point p = PointToScreen(e.Location);
-            p.Offset(-Bounds.Left, -Bounds.Top);
-            if (_reorder.Source != null)
+            using (BatchRedraw())
             {
-                if (e.Button != MouseButtons.Left) return;
-                UpdateItemDrag(p);
-                return;
-            }
-            UpdateHover(p);
-            if (_collapsePressed) return;
-            if (!_movingGroup && !_resizingGroup)
-            {
-                bool overItem = false;
-                foreach (DesktopItem item in DisplayItems())
-                    if (!ActiveGroup.Collapsed && !IsDesktopMetadata(item.Path) && TileBounds(item).Contains(p)) { overItem = true; break; }
-                Cursor = CollapseButtonBounds().Contains(p) ? Cursors.Hand
-                    : !ActiveGroup.Collapsed && ResizeHandleBounds().Contains(p) ? Cursors.SizeNWSE
-                    : overItem ? Cursors.Default : GroupBounds().Contains(p)
-                        ? Cursors.SizeAll : Cursors.Default;
-                return;
-            }
-            if (e.Button != MouseButtons.Left) return;
-            int dx = p.X - _dragStart.X;
-            int dy = p.Y - _dragStart.Y;
-            if (_movingGroup)
-            {
-                ActiveGroup.X = Math.Max(0, _groupStart.X + dx);
-                ActiveGroup.Y = Math.Max(0, _groupStart.Y + dy);
-                System.Collections.Generic.List<DesktopItem> groupItems = DisplayItems();
-                for (int i = 0; i < groupItems.Count && i < _itemStart.Count; i++)
+                base.OnMouseMove(e);
+                Point p = PointToScreen(e.Location);
+                p.Offset(-Bounds.Left, -Bounds.Top);
+                if (_reorder.Source != null)
                 {
-                    groupItems[i].X = Math.Max(0, _itemStart[i].X + dx);
-                    groupItems[i].Y = Math.Max(0, _itemStart[i].Y + dy);
+                    if (e.Button != MouseButtons.Left) return;
+                    UpdateItemDrag(p);
+                    return;
                 }
+                UpdateHover(p);
+                if (_collapsePressed) return;
+                if (!_movingGroup && !_resizingGroup)
+                {
+                    bool overItem = _hoveredItem != null;
+                    Cursor = CollapseButtonBounds().Contains(p) ? Cursors.Hand
+                        : !ActiveGroup.Collapsed && ResizeHandleBounds().Contains(p) ? Cursors.SizeNWSE
+                        : overItem ? Cursors.Default : GroupBounds().Contains(p)
+                            ? Cursors.SizeAll : Cursors.Default;
+                    return;
+                }
+                if (e.Button != MouseButtons.Left) return;
+                int dx = p.X - _dragStart.X;
+                int dy = p.Y - _dragStart.Y;
+                if (_movingGroup)
+                {
+                    ActiveGroup.X = Math.Max(0, _groupStart.X + dx);
+                    ActiveGroup.Y = Math.Max(0, _groupStart.Y + dy);
+                    System.Collections.Generic.List<DesktopItem> groupItems = DisplayItems();
+                    for (int i = 0; i < groupItems.Count && i < _itemStart.Count; i++)
+                    {
+                        groupItems[i].X = Math.Max(0, _itemStart[i].X + dx);
+                        groupItems[i].Y = Math.Max(0, _itemStart[i].Y + dy);
+                    }
+                }
+                else
+                {
+                    int minHeight = MinimumGroupHeight();
+                    int minWidth = Scale(150);
+                    Rectangle desktop = SystemInformation.VirtualScreen;
+                    int maxWidth = Math.Max(minWidth, desktop.Width - ActiveGroup.X - Scale(8));
+                    int maxHeight = Math.Max(minHeight, desktop.Height - ActiveGroup.Y - Scale(8));
+                    ActiveGroup.Width = Math.Max(minWidth, Math.Min(maxWidth, _groupStart.Width + dx));
+                    int requestedHeight = Math.Max(100, Math.Min(maxHeight, _groupStart.Height + dy));
+                    ActiveGroup.Height = requestedHeight;
+                    LayoutItemsInGroup();
+                }
+                Redraw();
             }
-            else
-            {
-                int minHeight = MinimumGroupHeight();
-                int minWidth = Scale(150);
-                Rectangle desktop = SystemInformation.VirtualScreen;
-                int maxWidth = Math.Max(minWidth, desktop.Width - ActiveGroup.X - Scale(8));
-                int maxHeight = Math.Max(minHeight, desktop.Height - ActiveGroup.Y - Scale(8));
-                ActiveGroup.Width = Math.Max(minWidth, Math.Min(maxWidth, _groupStart.Width + dx));
-                int requestedHeight = Math.Max(100, Math.Min(maxHeight, _groupStart.Height + dy));
-                ActiveGroup.Height = requestedHeight;
-                LayoutItemsInGroup();
-            }
-            Redraw();
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            base.OnMouseUp(e);
-            if (e.Button == MouseButtons.Right)
+            using (BatchRedraw())
             {
-                Point screen = PointToScreen(e.Location);
-                screen.Offset(-Bounds.Left, -Bounds.Top);
-                ActivateGroupAt(screen);
-                if (!_suppressContextMenu && TitleBounds().Contains(e.Location))
+                base.OnMouseUp(e);
+                if (e.Button == MouseButtons.Right)
                 {
-                    _headerMenu.Show(this, e.Location);
+                    Point screen = PointToScreen(e.Location);
+                    screen.Offset(-Bounds.Left, -Bounds.Top);
+                    ActivateGroupAt(screen);
+                    if (!_suppressContextMenu && TitleBounds().Contains(e.Location))
+                    {
+                        _headerMenu.Show(this, e.Location);
+                        return;
+                    }
+                    if (!_suppressContextMenu && !ActiveGroup.Collapsed)
+                    {
+                        foreach (DesktopItem item in DisplayItems())
+                        {
+                            if (!TileBounds(item).Contains(e.Location)) continue;
+                            _contextItem = item;
+                            _tooltip.Active = false;
+                            _itemMenu.Show(this, e.Location);
+                            break;
+                        }
+                    }
+                    _suppressContextMenu = false;
                     return;
                 }
-                if (!_suppressContextMenu && !ActiveGroup.Collapsed)
+                if (e.Button != MouseButtons.Left) return;
+                if (_collapsePressed)
                 {
-                    foreach (DesktopItem item in DisplayItems())
-                    {
-                        if (!TileBounds(item).Contains(e.Location)) continue;
-                        _contextItem = item;
-                        _tooltip.Active = false;
-                        _itemMenu.Show(this, e.Location);
-                        break;
-                    }
+                    bool toggle = CollapseButtonBounds().Contains(e.Location);
+                    _collapsePressed = false;
+                    Capture = false;
+                    if (toggle) ToggleCollapsed();
+                    return;
                 }
-                _suppressContextMenu = false;
-                return;
-            }
-            if (e.Button != MouseButtons.Left) return;
-            if (_collapsePressed)
-            {
-                bool toggle = CollapseButtonBounds().Contains(e.Location);
-                _collapsePressed = false;
+                if (_reorder.Source != null)
+                {
+                    Point p = e.Location;
+                    // Recompute the final slot from the actual release, not a target
+                    // crossed earlier while the button was held.
+                    UpdateItemDrag(p);
+                    bool changed = _reorder.Commit(Settings.Items, DisplayItems());
+                    _dragCancelTimer.Stop();
+                    _tooltip.Active = true;
+                    Capture = false;
+                    Cursor = Cursors.Default;
+                    if (changed) LayoutItemsInGroup();
+                    UpdateHover(p);
+                    Redraw();
+                    if (changed && ItemMoved != null) ItemMoved(this, EventArgs.Empty);
+                    return;
+                }
+                if (!_movingGroup && !_resizingGroup) return;
+                _movingGroup = false;
+                _resizingGroup = false;
                 Capture = false;
-                if (toggle) ToggleCollapsed();
-                return;
-            }
-            if (_reorder.Source != null)
-            {
-                Point p = e.Location;
-                // Recompute the final slot from the actual release, not a target
-                // crossed earlier while the button was held.
-                UpdateItemDrag(p);
-                bool changed = _reorder.Commit(Settings.Items, DisplayItems());
-                _dragCancelTimer.Stop();
-                _tooltip.Active = true;
-                Capture = false;
-                Cursor = Cursors.Default;
-                if (changed) LayoutItemsInGroup();
-                UpdateHover(p);
                 Redraw();
-                if (changed && ItemMoved != null) ItemMoved(this, EventArgs.Empty);
-                return;
+                if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
             }
-            if (!_movingGroup && !_resizingGroup) return;
-            _movingGroup = false;
-            _resizingGroup = false;
-            Capture = false;
-            if (ItemMoved != null) ItemMoved(this, EventArgs.Empty);
         }
 
         private void UpdateHover(Point p)
         {
             if (!_movingGroup && !_resizingGroup && !_collapsePressed) ActivateGroupAt(p);
             DesktopItem hovered = null;
-            foreach (DesktopItem item in DisplayItems())
-                if (!ActiveGroup.Collapsed && !IsDesktopMetadata(item.Path) && TileBounds(item).Contains(p)) { hovered = item; break; }
+            if (!ActiveGroup.Collapsed)
+                foreach (DesktopItem item in DisplayItems())
+                    if (TileBounds(item).Contains(p)) { hovered = item; break; }
             bool group = GroupBounds().Contains(p);
             bool resize = !ActiveGroup.Collapsed && ResizeHandleBounds().Contains(p);
             bool collapse = CollapseButtonBounds().Contains(p);

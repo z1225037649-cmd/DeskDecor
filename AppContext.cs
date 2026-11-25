@@ -300,7 +300,6 @@ namespace DeskDecor
                 _settingsSaveErrorShown = false;
                 if (_settingsForm != null && !_settingsForm.IsDisposed)
                     _settingsForm.SetPersistenceStatus(null);
-                _overlay.InvalidateSurface();
             }
             catch (Exception ex)
             {

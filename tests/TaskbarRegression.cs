@@ -13,8 +13,9 @@ namespace DeskDecor
             if (!condition) throw new Exception(message);
         }
 
-        public static void Main()
+        public static void Main(string[] args)
         {
+            if (args.Length == 1 && args[0] == "--measure") { MeasureRefreshWork(); return; }
             Native.Reset(false);
             using (DesktopFeatures features = new DesktopFeatures())
             {
@@ -94,6 +95,87 @@ namespace DeskDecor
             Expect(Native.OverlayExtendedStyle == 0 && Native.TopmostRemovals == 1,
                 "A stale TopMost flag must be explicitly removed, even when bounds and owner look correct");
             Console.WriteLine("PASS: stable desktop refresh avoids WorkerW and window-position churn");
+            CachedDesktopHost();
+            DesktopIconRefresh();
+        }
+
+        private static void MeasureRefreshWork()
+        {
+            Native.Reset(false);
+            DesktopFeatures.FindDesktopParent();
+            Native.WindowEnumerations = 0;
+            for (int i = 0; i < 50; i++)
+                DesktopFeatures.AttachOverlayToDesktop(Native.Overlay, new Rectangle(0, 0, 1920, 1080));
+            Console.WriteLine("MEASURE desktop_refreshes=50 full_window_enumerations=" + Native.WindowEnumerations);
+            using (var features = new DesktopFeatures())
+            {
+                features.SetDesktopIconsHidden(true);
+                Native.IconVisibilityWrites = 0;
+                for (int i = 0; i < 50; i++) features.Refresh();
+                Console.WriteLine("MEASURE hidden_icon_refreshes=50 visibility_writes=" + Native.IconVisibilityWrites);
+            }
+        }
+
+        private static void CachedDesktopHost()
+        {
+            Native.Reset(false);
+            using (var features = new DesktopFeatures())
+            {
+                features.TaskbarRecreated();
+                Expect(DesktopFeatures.FindDesktopParent() == Native.Progman, "The initial visible desktop host must be found");
+                Native.WindowEnumerations = 0;
+                for (int i = 0; i < 50; i++)
+                    DesktopFeatures.AttachOverlayToDesktop(Native.Overlay, new Rectangle(0, 0, 1920, 1080));
+                Expect(Native.WindowEnumerations == 50,
+                    "Stable refresh must retain z-order checks without rediscovering the desktop host");
+                Native.DefViewHost = Native.Worker;
+                Native.WorkerVisible = true;
+                Expect(DesktopFeatures.FindDesktopParent() == Native.Worker,
+                    "Moving the desktop view must invalidate a still-live previous host");
+                Native.WorkerVisible = false;
+                Native.DefViewHost = Native.Progman;
+                Expect(DesktopFeatures.FindDesktopParent() == Native.Progman,
+                    "A cached host becoming hidden must be replaced by the visible desktop host");
+                Native.WindowEnumerations = 0;
+                features.TaskbarRecreated();
+                DesktopFeatures.FindDesktopParent();
+                Expect(Native.WindowEnumerations == 1,
+                    "Explorer recreation must rediscover the host even with taskbar transparency disabled");
+            }
+            Console.WriteLine("PASS: desktop-host reuse halves steady attachment enumerations and recovers after host changes");
+        }
+
+        private static void DesktopIconRefresh()
+        {
+            Native.Reset(false);
+            using (var features = new DesktopFeatures())
+            {
+                features.SetDesktopIconsHidden(true);
+                Expect(!Native.IconsVisible && Native.IconVisibilityWrites == 1, "Enabling must hide visible desktop icons");
+                for (int i = 0; i < 50; i++) features.Refresh();
+                Expect(Native.IconVisibilityWrites == 1, "Stable hidden icons must not receive repeated visibility writes");
+                Native.IconsVisible = true;
+                features.Refresh();
+                Expect(!Native.IconsVisible && Native.IconVisibilityWrites == 2, "Externally restored icons must be hidden again");
+                Native.DefViewHost = Native.Worker;
+                Native.WorkerVisible = true;
+                Native.IconsVisible = true;
+                features.TaskbarRecreated();
+                features.Refresh();
+                Expect(!Native.IconsVisible && Native.IconVisibilityWrites == 3, "A replacement desktop host must receive the requested icon state");
+                features.SetDesktopIconsHidden(false);
+                Expect(Native.IconsVisible, "Disabling must restore originally visible icons");
+            }
+            Native.Reset(false);
+            Native.IconsVisible = false;
+            using (var features = new DesktopFeatures())
+            {
+                features.SetDesktopIconsHidden(true);
+                features.Refresh();
+                features.SetDesktopIconsHidden(false);
+                Expect(!Native.IconsVisible && Native.IconVisibilityWrites == 0, "Originally hidden icons must stay hidden without redundant writes");
+            }
+            Console.WriteLine("PASS: desktop-icon refresh writes only changed visibility and preserves the original state");
         }
     }
 
@@ -114,7 +196,7 @@ namespace DeskDecor
     internal static class Native
     {
         public static readonly IntPtr Tray = new IntPtr(1), Xaml = new IntPtr(2),
-            Progman = new IntPtr(3), DefView = new IntPtr(4), Worker = new IntPtr(5), Overlay = new IntPtr(6), App = new IntPtr(7);
+            Progman = new IntPtr(3), DefView = new IntPtr(4), Worker = new IntPtr(5), Overlay = new IntPtr(6), App = new IntPtr(7), IconView = new IntPtr(8);
         public static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
         public const int ACCENT_DISABLED = 0, ACCENT_ENABLE_TRANSPARENTGRADIENT = 2, WCA_ACCENT_POLICY = 19;
         public const int GWL_STYLE = -16, WS_CHILD = 0x40000000, WS_POPUP = unchecked((int)0x80000000);
@@ -130,6 +212,9 @@ namespace DeskDecor
             SWP_NOACTIVATE = 16, SWP_FRAMECHANGED = 32, SWP_SHOWWINDOW = 64, GW_HWNDNEXT = 2;
         public const uint SWP_NOMOVE = 2, SWP_NOSIZE = 1, SWP_NOOWNERZORDER = 512;
         public static int AccentWrites, PositionWrites, WorkerMessages;
+        public static int WindowEnumerations, IconVisibilityWrites;
+        public static IntPtr DefViewHost;
+        public static bool WorkerVisible, IconsVisible;
         private static bool _xaml;
         public static ACCENTPOLICY LastPolicy;
         public delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr ignored);
@@ -144,6 +229,8 @@ namespace DeskDecor
             OverlayStyle = WS_POPUP; OverlayOwner = Progman; DesktopPrevious = Overlay;
             DesktopRaised = false; DesktopLowerings = 0;
             OverlayExtendedStyle = TopmostRemovals = 0;
+            WindowEnumerations = IconVisibilityWrites = 0;
+            DefViewHost = Progman; WorkerVisible = false; IconsVisible = true;
         }
         public static IntPtr FindWindow(string name, string title)
         {
@@ -151,12 +238,14 @@ namespace DeskDecor
         }
         public static IntPtr FindWindowEx(IntPtr parent, IntPtr after, string name, string title)
         {
-            if (parent == Progman && name == "SHELLDLL_DefView") return DefView;
+            if (parent == DefViewHost && name == "SHELLDLL_DefView") return DefView;
+            if (parent == DefView && name == "SysListView32") return IconView;
             if (parent == IntPtr.Zero && after == Progman && name == "WorkerW") return Worker;
             return IntPtr.Zero;
         }
         public static bool EnumWindows(EnumWindowsProc action, IntPtr ignored)
         {
+            WindowEnumerations++;
             foreach (IntPtr handle in DesktopRaised ? new [] { Worker, Tray, Overlay, Progman, App } : new [] { Worker, Tray, App, Overlay, Progman })
                 if (!action(handle, ignored)) break;
             return true;
@@ -186,8 +275,13 @@ namespace DeskDecor
             return true;
         }
         public static bool IsWindow(IntPtr hwnd) { return true; }
-        public static bool IsWindowVisible(IntPtr hwnd) { return hwnd != Worker; }
-        public static bool ShowWindow(IntPtr hwnd, uint state) { return true; }
+        public static bool IsWindowVisible(IntPtr hwnd)
+        { return hwnd == Worker ? WorkerVisible : hwnd == IconView ? IconsVisible : true; }
+        public static bool ShowWindow(IntPtr hwnd, uint state)
+        {
+            if (hwnd == IconView) { IconVisibilityWrites++; IconsVisible = state != SW_HIDE; }
+            return true;
+        }
         public static IntPtr GetShellWindow() { return Progman; }
         public static IntPtr GetDesktopWindow() { return new IntPtr(99); }
         public static IntPtr GetWindow(IntPtr hwnd, uint command)

@@ -226,6 +226,35 @@ internal static class ShellIconCacheRegression
         ExpectDisposed(large, "Disposing the cache must release its large image");
     }
 
+    private static void RemovedEntries()
+    {
+        string removedPath = FixturePath("removed.lnk");
+        string keptPath = FixturePath("kept.lnk");
+        File.WriteAllText(removedPath, "a");
+        File.WriteAllText(keptPath, "g");
+        var loader = new Loader();
+        using (var cache = new ShellIconCache(loader.Load))
+        {
+            Bitmap removedRaw = cache.Get(removedPath);
+            Bitmap removedSmall = cache.GetScaled(removedPath, 4);
+            Bitmap removedLarge = cache.GetScaled(removedPath, 8);
+            Bitmap kept = cache.GetScaled(keptPath, 4);
+            cache.RetainPaths(new[] { keptPath.ToUpperInvariant(), keptPath });
+            ExpectDisposed(removedRaw, "Removing an entry must release its source icon");
+            ExpectDisposed(removedSmall, "Removing an entry must release its small icon");
+            ExpectDisposed(removedLarge, "Removing an entry must release its large icon");
+            File.WriteAllText(removedPath, "changed after removal");
+            Expect(!cache.RefreshChanged(), "An unreferenced path must no longer participate in periodic icon refresh");
+            Expect(object.ReferenceEquals(kept, cache.GetScaled(keptPath, 4)) && loader.Calls(keptPath) == 1,
+                "Retained shared/case-insensitive paths must keep their cached images");
+            ExpectColor(cache.GetScaled(removedPath, 4), Color.Blue, "Adding a removed path again must load fresh content");
+            Expect(loader.Calls(removedPath) == 2, "Re-added entries must be loaded exactly once");
+            cache.RetainPaths(new string[0]);
+            ExpectDisposed(kept, "Clearing all entries must release all cached images");
+            Expect(!cache.RefreshChanged(), "An empty cache must perform no stale-path refresh");
+        }
+    }
+
     [STAThread]
     public static int Main()
     {
@@ -241,6 +270,7 @@ internal static class ShellIconCacheRegression
             Run("missing, created and removed shortcuts never retain stale placeholder or source images", MissingPaths);
             Run("same-timestamp file and directory transitions refresh the displayed icon", FileDirectoryTransitions);
             Run("disposing the icon cache releases native and scaled bitmap resources", Disposal);
+            Run("removed entries release all icon sizes and stop participating in refresh", RemovedEntries);
             Console.WriteLine("RESULT: " + _passed + "/" + (_passed + _failed) + " icon-cache checks passed; fake image loader and temporary files only");
             return _failed == 0 ? 0 : 1;
         }

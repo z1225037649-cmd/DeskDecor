@@ -22,6 +22,8 @@ Increase `AssemblyInfo.cs` before testing, building and packaging each new relea
 
 ## Use
 
+Version 1.2.1 combines redundant redraws within each interaction, loads offscreen entry icons when they enter view, and releases icon caches for removed entries. Background refresh reuses a valid desktop host while retaining recovery after Explorer or wallpaper-host changes.
+
 If Windows displays an Open File security warning, verify that the ZIP came from this project, open its Properties, select Unblock and Apply, then extract it into a new folder. An already extracted copy needs its `DeskDecor.exe` unblocked separately. The program is currently unsigned; download or transfer software can add an Internet marker again, so successful local packaging checks cannot guarantee that every recipient will see no warnings.
 
 - Double-click `DeskDecor.exe` to show the desktop items.

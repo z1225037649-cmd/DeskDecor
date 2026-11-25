@@ -80,19 +80,30 @@ namespace DeskDecor
             var changed = new List<string>();
             foreach (KeyValuePair<string, IconStamp> entry in _stamps)
                 if (!entry.Value.Equals(ReadStamp(entry.Key))) changed.Add(entry.Key);
-            foreach (string path in changed)
-            {
-                _images[path].Dispose();
-                _images.Remove(path);
-                _stamps.Remove(path);
-                Dictionary<int, Bitmap> sizes;
-                if (_scaled.TryGetValue(path, out sizes))
-                {
-                    foreach (Bitmap image in sizes.Values) image.Dispose();
-                    _scaled.Remove(path);
-                }
-            }
+            foreach (string path in changed) Remove(path);
             return changed.Count != 0;
+        }
+
+        public void RetainPaths(IEnumerable<string> paths)
+        {
+            var retained = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+            var removed = new List<string>();
+            foreach (string path in _images.Keys)
+                if (!retained.Contains(path)) removed.Add(path);
+            foreach (string path in removed) Remove(path);
+        }
+
+        private void Remove(string path)
+        {
+            _images[path].Dispose();
+            _images.Remove(path);
+            _stamps.Remove(path);
+            Dictionary<int, Bitmap> sizes;
+            if (_scaled.TryGetValue(path, out sizes))
+            {
+                foreach (Bitmap image in sizes.Values) image.Dispose();
+                _scaled.Remove(path);
+            }
         }
 
         private struct IconStamp : IEquatable<IconStamp>

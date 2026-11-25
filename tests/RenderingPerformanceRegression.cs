@@ -108,9 +108,29 @@ internal static class RenderingPerformanceRegression
         Console.WriteLine("PASS: repeated paints, movement, edits, DPI, opacity, collapse and long editing sessions render without desktop windows");
     }
 
-    private static void Benchmark()
+    private static void CheckClipping()
     {
         AppSettings settings = Settings(80);
+        using (OverlayForm overlay = Overlay(settings))
+        using (var image = new Bitmap(480, 320, PixelFormat.Format32bppPArgb))
+        using (Graphics graphics = Graphics.FromImage(image))
+        {
+            foreach (int dpi in new[] { 96, 120, 144, 192 })
+            {
+                Layout(overlay, settings, dpi);
+                foreach (DesktopItem item in settings.Items) { item.X -= 55; item.Y -= 33; }
+                Console.WriteLine("PIXELS " + dpi + "-clipped " + Pixels(overlay, image, graphics));
+                foreach (DesktopItem item in settings.Items) { item.X -= 17; item.Y -= 360; }
+                Console.WriteLine("PIXELS " + dpi + "-entering " + Pixels(overlay, image, graphics));
+            }
+            Expect(!overlay.IsHandleCreated, "Clipping checks must stay offscreen");
+        }
+        Console.WriteLine("PASS: clipped edge tiles and entries moving into view preserve the visible image");
+    }
+
+    private static void Benchmark(int count)
+    {
+        AppSettings settings = Settings(count);
         using (OverlayForm overlay = Overlay(settings))
         using (var image = new Bitmap(1920, 1080, PixelFormat.Format32bppPArgb))
         using (Graphics graphics = Graphics.FromImage(image))
@@ -136,7 +156,7 @@ internal static class RenderingPerformanceRegression
             }
             Array.Sort(samples);
             Console.WriteLine("BENCHMARK median_ms_per_frame=" + samples[2].ToString("F3", System.Globalization.CultureInfo.InvariantCulture) +
-                " items=80 frame=1920x1080 dpi=96 samples=5 frames_per_sample=60");
+                " items=" + count + " frame=1920x1080 dpi=96 samples=5 frames_per_sample=60");
         }
     }
 
@@ -144,7 +164,7 @@ internal static class RenderingPerformanceRegression
     public static int Main()
     {
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
-        try { CheckPixels(); Benchmark(); return 0; }
+        try { CheckPixels(); CheckClipping(); Benchmark(80); Benchmark(600); return 0; }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
     }
 }

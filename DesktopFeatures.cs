@@ -11,6 +11,7 @@ namespace DeskDecor
     internal sealed class DesktopFeatures : IDisposable
     {
         private static IntPtr _lastOverlayParent;
+        private static IntPtr _cachedDesktopParent;
         private string _lastTaskbarLogKey;
         private readonly Dictionary<IntPtr, Native.ACCENTPOLICY> _taskbarOriginals =
             new Dictionary<IntPtr, Native.ACCENTPOLICY>();
@@ -140,7 +141,9 @@ namespace DeskDecor
                 _iconsOriginalVisible = Native.IsWindowVisible(hwnd);
                 _iconsStateCaptured = true;
             }
-            Native.ShowWindow(hwnd, hidden ? Native.SW_HIDE : (_iconsOriginalVisible ? Native.SW_SHOW : Native.SW_HIDE));
+            bool visible = !hidden && _iconsOriginalVisible;
+            if (Native.IsWindowVisible(hwnd) != visible)
+                Native.ShowWindow(hwnd, visible ? Native.SW_SHOW : Native.SW_HIDE);
             if (wasHidden && !hidden) _iconsStateCaptured = false;
         }
 
@@ -151,6 +154,7 @@ namespace DeskDecor
 
         public void TaskbarRecreated()
         {
+            _cachedDesktopParent = IntPtr.Zero;
             if (!_taskbarRequested) return;
             _taskbarInitialized = false;
             if (_xaml != null) _xaml.ResetConnection();
@@ -170,7 +174,9 @@ namespace DeskDecor
             try
             {
                 foreach (Process process in Process.GetProcessesByName("explorer"))
+                using (process)
                     foreach (ProcessThread thread in process.Threads)
+                    using (thread)
                         Native.EnumThreadWindows((uint)thread.Id, delegate(IntPtr hwnd, IntPtr ignored)
                         {
                             AddTaskbarIfMatching(hwnd, result);
@@ -229,47 +235,21 @@ namespace DeskDecor
 
         private static IntPtr FindDesktopIconWindow()
         {
-            IntPtr defView = IntPtr.Zero;
-            IntPtr progman = Native.FindWindow("Progman", null);
-            if (progman != IntPtr.Zero)
-                defView = Native.FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
-
-            if (defView == IntPtr.Zero)
-            {
-                Native.EnumWindows(delegate(IntPtr hwnd, IntPtr ignored)
-                {
-                    defView = Native.FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
-                    return defView == IntPtr.Zero;
-                }, IntPtr.Zero);
-            }
-            if (defView == IntPtr.Zero)
-            {
-                try
-                {
-                    foreach (Process process in Process.GetProcessesByName("explorer"))
-                    {
-                        foreach (ProcessThread thread in process.Threads)
-                        {
-                            bool found = false;
-                            Native.EnumThreadWindows((uint)thread.Id, delegate(IntPtr hwnd, IntPtr ignored)
-                            {
-                                defView = Native.FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
-                                found = defView != IntPtr.Zero;
-                                return !found;
-                            }, IntPtr.Zero);
-                            if (found) break;
-                        }
-                        if (defView != IntPtr.Zero) break;
-                    }
-                }
-                catch { }
-            }
+            IntPtr parent = FindDesktopParent();
+            IntPtr defView = parent == IntPtr.Zero ? IntPtr.Zero :
+                Native.FindWindowEx(parent, IntPtr.Zero, "SHELLDLL_DefView", null);
             return defView == IntPtr.Zero ? IntPtr.Zero :
                 Native.FindWindowEx(defView, IntPtr.Zero, "SysListView32", "FolderView");
         }
 
         public static IntPtr FindDesktopParent()
         {
+            // Validate the actual icon host before reusing it: Explorer or a
+            // wallpaper application may destroy, hide or replace this window.
+            if (_cachedDesktopParent != IntPtr.Zero && Native.IsWindowVisible(_cachedDesktopParent) &&
+                Native.FindWindowEx(_cachedDesktopParent, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
+                return _cachedDesktopParent;
+            _cachedDesktopParent = IntPtr.Zero;
             IntPtr progman = Native.FindWindow("Progman", null);
             IntPtr iconHost = IntPtr.Zero;
             // The visible desktop icon host also owns WPE's wallpaper WorkerW
@@ -286,17 +266,21 @@ namespace DeskDecor
                 }
                 return true;
             }, IntPtr.Zero);
-            if (iconHost != IntPtr.Zero) return iconHost;
+            if (iconHost != IntPtr.Zero) return _cachedDesktopParent = iconHost;
             if (iconHost == IntPtr.Zero)
             {
                 try
                 {
                     foreach (Process process in Process.GetProcessesByName("explorer"))
+                    using (process)
+                    {
                         foreach (ProcessThread thread in process.Threads)
+                        using (thread)
                         {
                             bool found = false;
                             Native.EnumThreadWindows((uint)thread.Id, delegate(IntPtr hwnd, IntPtr ignored)
                             {
+                                if (!Native.IsWindowVisible(hwnd)) return true;
                                 IntPtr candidate = Native.FindWindowEx(hwnd, IntPtr.Zero, "SHELLDLL_DefView", null);
                                 if (candidate == IntPtr.Zero) return true;
                                 iconHost = hwnd;
@@ -305,10 +289,12 @@ namespace DeskDecor
                             }, IntPtr.Zero);
                             if (found) break;
                         }
+                        if (iconHost != IntPtr.Zero) break;
+                    }
                 }
                 catch { }
             }
-            if (iconHost != IntPtr.Zero) return iconHost;
+            if (iconHost != IntPtr.Zero) return _cachedDesktopParent = iconHost;
             if (progman != IntPtr.Zero) return progman;
             IntPtr shell = Native.GetShellWindow();
             if (shell != IntPtr.Zero) return shell;
