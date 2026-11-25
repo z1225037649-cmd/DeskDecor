@@ -12,13 +12,13 @@ Packaging sets the output folder and both final ZIP files to Medium integrity an
 
 ## Upgrading from a shared package
 
-Unpack the new `DeskDecor-portable-x64.zip` into a new permanent folder and run its `DeskDecor.exe`. No network connection is required. If that folder has no settings, the app checks the current user's running older copy, last successfully launched location and startup registration. One valid source is imported automatically; multiple sources require selecting the old executable. Existing destination settings are preserved, and the drive is not scanned.
+Exit the running version through its tray menu, unpack the new `DeskDecor-portable-x64.zip` into a new permanent folder and run its `DeskDecor.exe`. No network connection is required. A fresh folder imports only the immediate files, shortcuts and folders on the current user's desktop and the public desktop. Folders become entries; their contents are not scanned.
 
-For the first upgrade from an early release, keep the old copy running while opening the new one. If prompted, exit the old copy through its tray and open the new copy again; the selected source is remembered. Later releases support automatic save-and-exit handoff. If an early copy is already stopped and has no startup registration, launch it first so it can be found, or close it and copy its `DeskDecor.settings.xml` and `.bak` into the new folder.
+Starting with 1.2.0, automatic discovery of older installations, upgrade handoff, content migration and old-directory cleanup have been removed. The app does not use running processes, the last installation record, startup paths or previous migration records to locate configurations elsewhere. Leftover `.migration` records are not executed.
 
-Starting with 1.1.1, personal files, folders and referenced content inside the old folder are copied and verified under the new folder's `迁移文件` (Migrated files) directory. Entry paths are updated before startup; entries pointing to the old program use the new executable. Copied shortcuts also update their targets and working directories. After healthy startup, all old files are removed, including settings, backups, logs, runtime files and prior migration archives; the empty old directory is removed too. No additional old-version archive is retained. Changes made during cleanup are preserved separately instead of overwriting edited migrated files. Files still locked by Windows stay in a cleanup plan and are retried after release; Explorer is not restarted. Source/Git folders, personal/system root directories, nested old/new folders and reparse points are protected. Failed migration or startup leaves the original files available. Enable startup again at the new location if needed.
+Later launches load `DeskDecor.settings.xml` beside the current executable, falling back only to its adjacent `.bak` when needed. To keep groups, exit the app and manually copy those two configuration files. Entries keep their original target paths; files in the old directory are not moved or deleted. Enable startup again at the new location if needed.
 
-Increase `AssemblyInfo.cs` before testing, building and packaging each new release: only higher versions take over older configurations. Share packages exclude all personal settings and migration backups.
+Increase `AssemblyInfo.cs` before testing, building and packaging each new release. Share packages exclude all personal settings and migrated files.
 
 ## Use
 
@@ -62,7 +62,7 @@ The inline title input is independent of the desktop surface, so keyboard activa
 
 Reference: [TranslucentTB TaskbarAttributeWorker](https://github.com/TranslucentTB/TranslucentTB/blob/release/TranslucentTB/taskbar/taskbarattributeworker.cpp) uses a separate TaskbarService/XAML Diagnostics implementation for XAML taskbars; an AccentPolicy call returning success is not proof of visible transparency.
 
-Run `powershell -ExecutionPolicy Bypass -File tests\run.ps1` for the taskbar and desktop-refresh regression checks. They compile production DesktopFeatures against fake Windows/XAML boundaries, verifying routing, restore, refresh idempotency, and rejection of hidden WorkerW hosts. They do not change Explorer or system preferences. Actual engine connections and failures are recorded in `DeskDecor.debug.log`; `DeskDecor.shell.txt` records desktop window diagnostics.
+Run `powershell -ExecutionPolicy Bypass -File tests\run.ps1` for the taskbar and desktop-refresh regression checks. They compile production DesktopFeatures against fake Windows/XAML boundaries, verifying routing, restore, refresh idempotency, and rejection of hidden WorkerW hosts. They do not change Explorer or system preferences. Actual engine connections and failures are recorded in `DeskDecor.debug.log`. Normal startup no longer writes a full-screen PNG or enumerates windows for diagnostic dumps.
 
 The same runner checks delayed reorder commits, batch-import normalization and duplicate handling, preservation of original files when removing entries, collapsed geometry/XML persistence, and startup enable/disable against a fake registry boundary. Startup tests do not enable real autostart.
 

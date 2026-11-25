@@ -5,10 +5,8 @@ $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('DeskDecor-appcontext-' + [Gui
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
     $sources = @()
-    $handoffName = 'DeskDecor.UpgradeTest.' + [Guid]::NewGuid().ToString('N')
     foreach ($source in Get-ChildItem -LiteralPath $projectRoot -Filter '*.cs' -File) {
         $text = [IO.File]::ReadAllText($source.FullName).Replace("`r`n", "`n")
-        $text = $text.Replace('DeskDecor.PrepareUpgrade.20261122', $handoffName)
         if ($source.Name -eq 'AppContext.cs') {
             # Substitute external startup/system state and native presentation.
             # The production event subscriptions and SaveSettings are unchanged.

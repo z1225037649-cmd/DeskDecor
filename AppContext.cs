@@ -30,14 +30,6 @@ namespace DeskDecor
         private SettingsForm _settingsForm;
         private bool _visible = true;
         private bool _syncingFeatureMenus;
-        private int _diagnosticTicks;
-        private EventWaitHandle _upgradeEvent;
-        private RegisteredWaitHandle _upgradeWait;
-        private System.Windows.Forms.Timer _upgradeHealthTimer;
-        private bool _settingsLoadedCleanly;
-        private volatile bool _closing;
-        private int _migrationCleanupRunning;
-        private bool _upgradeLocationRecorded;
 
         public AppContext(string dataPath, EventWaitHandle showSettingsEvent)
         {
@@ -45,7 +37,6 @@ namespace DeskDecor
             _settingsFileWasMissing = !File.Exists(dataPath);
             bool settingsRecovered;
             AppSettings settings = SettingsStore.Load(_dataPath, out _settingsStatus, out settingsRecovered);
-            _settingsLoadedCleanly = string.IsNullOrEmpty(_settingsStatus);
             _preserveRecoveredSettingsBackup = settingsRecovered;
             _startup = new StartupRegistration(Application.ExecutablePath);
             CheckStartupLocation(false);
@@ -141,45 +132,8 @@ namespace DeskDecor
                 CheckStartupLocation(true);
                 _overlay.RefreshDesktopLayout();
                 SyncFeatureControls(_features.TaskbarTransparent, _features.DesktopIconsHidden);
-                if (++_diagnosticTicks == 3)
-                    try { ShellDiagnostics.Write(); } catch { }
             };
             _refreshTimer.Start();
-        }
-
-        // Only the real application advertises handoff support and registers its
-        // location. Tests that construct AppContext never modify user records.
-        public void StartUpgradeHandoff()
-        {
-            _upgradeEvent = new EventWaitHandle(false, EventResetMode.AutoReset, LocalUpgrade.PrepareEventName);
-            _upgradeWait = ThreadPool.RegisterWaitForSingleObject(_upgradeEvent, delegate
-            {
-                if (!_closing) Native.PostMessage(_messageWindow.Handle, Native.WM_PREPARE_UPGRADE, IntPtr.Zero, IntPtr.Zero);
-            }, null, Timeout.Infinite, false);
-            _messageWindow.PrepareUpgradeRequested += delegate
-            {
-                if (_settingsForm != null && _settingsForm.Visible) _settingsForm.Hide();
-                SaveSettings(this, EventArgs.Empty);
-                if (!_settingsSaveErrorShown) ExitThread();
-            };
-            _upgradeHealthTimer = new System.Windows.Forms.Timer { Interval = 3000 };
-            _upgradeHealthTimer.Tick += delegate
-            {
-                if (!_settingsLoadedCleanly || _settingsSaveErrorShown) { _upgradeHealthTimer.Stop(); return; }
-                string directory = Path.GetDirectoryName(_dataPath);
-                if (_upgradeLocationRecorded && !LocalUpgrade.HasPendingCleanup(directory))
-                { _upgradeHealthTimer.Stop(); return; }
-                _upgradeHealthTimer.Interval = 30000;
-                if (Interlocked.CompareExchange(ref _migrationCleanupRunning, 1, 0) != 0) return;
-                _upgradeLocationRecorded = true;
-                ThreadPool.QueueUserWorkItem(delegate
-                {
-                    try { LocalUpgrade.CompleteMigration(directory); LocalUpgrade.RecordSuccessfulInstall(directory); }
-                    catch { /* Retain the cleanup plan until locked files can be removed. */ }
-                    finally { Interlocked.Exchange(ref _migrationCleanupRunning, 0); }
-                });
-            };
-            _upgradeHealthTimer.Start();
         }
 
         private void ShowSettings(bool addFolder)
@@ -389,10 +343,6 @@ namespace DeskDecor
 
         protected override void ExitThreadCore()
         {
-            _closing = true;
-            if (_upgradeHealthTimer != null) { _upgradeHealthTimer.Stop(); _upgradeHealthTimer.Dispose(); }
-            if (_upgradeWait != null) _upgradeWait.Unregister(null);
-            if (_upgradeEvent != null) _upgradeEvent.Dispose();
             _refreshTimer.Stop();
             _refreshTimer.Dispose();
             if (_settingsWait != null) _settingsWait.Unregister(null);
@@ -412,7 +362,6 @@ namespace DeskDecor
         private readonly uint _taskbarCreated = Native.RegisterWindowMessage("TaskbarCreated");
         public event EventHandler ShowSettingsRequested;
         public event EventHandler TaskbarCreated;
-        public event EventHandler PrepareUpgradeRequested;
 
         public ShowSettingsMessageWindow()
         {
@@ -421,11 +370,6 @@ namespace DeskDecor
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == Native.WM_PREPARE_UPGRADE)
-            {
-                if (PrepareUpgradeRequested != null) PrepareUpgradeRequested(this, EventArgs.Empty);
-                return;
-            }
             if ((uint)m.Msg == _taskbarCreated)
             {
                 if (TaskbarCreated != null) TaskbarCreated(this, EventArgs.Empty);

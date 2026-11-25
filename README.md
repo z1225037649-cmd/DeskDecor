@@ -8,7 +8,7 @@
 2. 完整解压到普通用户可写入的文件夹（例如桌面上新建的 `DeskDecor` 文件夹），再双击 `DeskDecor.exe`。无需安装或管理员权限。
 3. 通过系统托盘菜单管理项目、显示或隐藏分组，以及启用可选功能。
 
-首次启动读取当前电脑的桌面项目。发布包不包含开发者的个人快捷方式、配置或日志。
+每个新目录首次启动时，只导入当前用户桌面和公共桌面第一层的文件、快捷方式和文件夹；文件夹仅作为入口，不扫描内部内容。后续启动读取当前 EXE 旁的配置。发布包不包含开发者的个人快捷方式、配置或日志。
 
 若 Windows 提示“打开文件—安全警告”，确认压缩包来自本项目后，可在解压前右键 ZIP →“属性”→勾选“解除锁定”→“应用”，再解压到新文件夹。已经解压的副本需要对 `DeskDecor.exe` 单独解除锁定。程序目前没有数字签名；外部下载或传输软件可能重新添加互联网标记，本地打包检查通过不代表所有接收电脑都不会提示。
 
@@ -32,17 +32,17 @@
 
 入口引用当前电脑的真实路径，并不会复制软件。其他用户应添加自己电脑上的项目。
 
-## 更换新版并保留配置
+## 更换新版
 
-更新时，将收到的 `DeskDecor-portable-x64.zip` 完整解压到一个新的固定文件夹，然后运行其中的 `DeskDecor.exe`，无需联网。
+更新时，先从托盘退出正在运行的版本，再将收到的 `DeskDecor-portable-x64.zip` 完整解压到一个新的固定文件夹，运行其中的 `DeskDecor.exe`，无需联网。
 
-新版自身没有配置时，会查找当前用户正在运行的旧版、上次成功启动记录和开机自启动位置。只有一份有效旧配置时自动迁移；发现多份时让用户选择旧版程序。新文件夹已有配置时继续使用该配置。不会扫描整块硬盘。
+从 1.2.0 开始，已移除自动寻找旧版配置、版本交接、文件迁移及旧目录清理。新目录没有自身配置时，仅导入桌面第一层项目，不再根据运行进程、上次启动记录、开机自启动路径或旧迁移记录寻找其他目录。
 
-从早期版本首次升级时，请先保持旧版运行，再打开新版；若提示旧版不支持自动退出，从旧版托盘选择“退出”，重新打开新版即可。已支持交接的版本会自动保存并退出。若早期旧版已关闭且没有自启动记录，可先运行一次旧版帮助识别，或退出后把它的 `DeskDecor.settings.xml` 和 `.bak` 一并复制到新目录。
+当前 EXE 目录已有 `DeskDecor.settings.xml` 时继续使用它；主配置缺失或损坏时仅尝试同目录的 `.bak`。若需要保留已有分组，可在退出软件后手动复制这两个配置文件。入口仍引用原路径，程序不会搬移或清理旧目录中的文件。
 
-从 1.1.1 开始，旧目录里的个人文件、文件夹及仍被入口引用的内容会先复制到新版的 `迁移文件` 文件夹，校验内容后自动更新入口路径；指向旧程序的入口会改为新版程序。复制出的快捷方式同时更新内部目标和工作目录。新版正常启动后，删除旧目录里的程序、配置、备份、日志、运行库和旧迁移归档，并删除已清空的旧文件夹，不再另存旧版归档。若清理期间又出现文件变更，会在新版迁移目录中另外保存，避免覆盖已编辑的新文件。Windows 仍占用的文件会保留清理记录，在释放占用后后台重试；不会重启资源管理器。源码/Git 目录、系统或个人根目录、新旧目录互相嵌套及链接目录不会整目录清理。迁移失败或新版尚未正常启动时不删除旧文件。换目录后，需要在新位置重新开启开机自启动。
+换目录后，需要在新位置重新开启开机自启动。旧版本遗留的 `.migration` 记录不会执行；旧目录由用户自行保留或整理。
 
-发布下一版前提高 `AssemblyInfo.cs` 的版本号，再运行测试、构建和打包。仅更换版本号更高的程序才会接管旧配置；分享包始终不包含个人配置或迁移备份。
+发布下一版前提高 `AssemblyInfo.cs` 的版本号，再运行测试、构建和打包。分享包始终不包含个人配置或迁移文件。
 
 本轮实机验证覆盖单屏 125%→150%→125% 动态缩放、原始样式分组改名、分组手势、系统开关、壁纸切换及 Explorer 重启恢复。真实多屏混合 DPI 和显示器热插拔仍待硬件验证；自启动已验证注册与清理，未注销或重启 Windows。详见[测试状态](tests/verification-status-2026-11-21.md)。
 
@@ -100,7 +100,7 @@ The inline title input is independent of the desktop surface, so keyboard activa
 
 Reference: [TranslucentTB TaskbarAttributeWorker](https://github.com/TranslucentTB/TranslucentTB/blob/release/TranslucentTB/taskbar/taskbarattributeworker.cpp) uses a separate TaskbarService/XAML Diagnostics implementation for XAML taskbars; an AccentPolicy call returning success is not proof of visible transparency.
 
-Run `powershell -ExecutionPolicy Bypass -File tests\run.ps1` for the taskbar and desktop-refresh regression checks. They compile production DesktopFeatures against fake Windows/XAML boundaries, verifying routing, restore, refresh idempotency, and rejection of hidden WorkerW hosts. They do not change Explorer or system preferences. Actual engine connections and failures are recorded in `DeskDecor.debug.log`; `DeskDecor.shell.txt` records desktop window diagnostics.
+Run `powershell -ExecutionPolicy Bypass -File tests\run.ps1` for the taskbar and desktop-refresh regression checks. They compile production DesktopFeatures against fake Windows/XAML boundaries, verifying routing, restore, refresh idempotency, and rejection of hidden WorkerW hosts. They do not change Explorer or system preferences. Actual engine connections and failures are recorded in `DeskDecor.debug.log`. Normal startup no longer writes a full-screen PNG or enumerates windows for diagnostic dumps.
 
 The same runner checks delayed reorder commits, batch-import normalization and duplicate handling, preservation of original files when removing entries, collapsed geometry/XML persistence, and startup enable/disable against a fake registry boundary. Startup tests do not enable real autostart.
 

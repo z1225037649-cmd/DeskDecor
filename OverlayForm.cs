@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -34,7 +35,9 @@ namespace DeskDecor
         private readonly ContextMenuStrip _itemMenu = new ContextMenuStrip();
         private readonly ContextMenuStrip _headerMenu = new ContextMenuStrip();
         private DesktopItem _contextItem;
-        private bool _diagnosticsWritten;
+        private readonly Dictionary<LabelGeometryKey, LabelGeometry> _labelGeometry =
+            new Dictionary<LabelGeometryKey, LabelGeometry>();
+        private readonly Queue<LabelGeometryKey> _labelGeometryOrder = new Queue<LabelGeometryKey>();
         private bool _movingGroup;
         private bool _resizingGroup;
         private readonly ItemReorderGesture _reorder = new ItemReorderGesture();
@@ -356,17 +359,6 @@ namespace DeskDecor
             Rectangle desktop = SystemInformation.VirtualScreen;
             Point screenOrigin = desktop.Location;
             bool pushed = _surface.Push(Handle, screenOrigin.X, screenOrigin.Y);
-            if (pushed && !_diagnosticsWritten)
-            {
-                try
-                {
-                    bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DeskDecor.surface.png"),
-                        System.Drawing.Imaging.ImageFormat.Png);
-                    ShellDiagnostics.Write();
-                    _diagnosticsWritten = true;
-                }
-                catch { }
-            }
             if (!pushed)
             {
                 try
@@ -464,23 +456,106 @@ namespace DeskDecor
 
         private void DrawOutlinedLabel(Graphics g, string text, RectangleF bounds, StringFormat format, int opacity)
         {
-            using (var path = new GraphicsPath())
+            var key = new LabelGeometryKey(text, bounds.Size, Scale((int)_labelFont.Size), format);
+            LabelGeometry geometry;
+            if (!_labelGeometry.TryGetValue(key, out geometry))
+            {
+                // Cache at the origin so moving a group reuses its glyphs. Bound
+                // native path resources even after many edits and size changes.
+                geometry = new LabelGeometry(text, _labelFont, key.FontSize, bounds.Size, format);
+                if (_labelGeometry.Count == 512)
+                {
+                    LabelGeometryKey oldest = _labelGeometryOrder.Dequeue();
+                    _labelGeometry[oldest].Dispose();
+                    _labelGeometry.Remove(oldest);
+                }
+                _labelGeometry.Add(key, geometry);
+                _labelGeometryOrder.Enqueue(key);
+            }
             using (var outline = new Pen(Color.FromArgb(195 * opacity / 255, 0, 0, 0), 1.5F))
             using (var shadow = new SolidBrush(Color.FromArgb(90 * opacity / 255, 0, 0, 0)))
             using (var fill = new SolidBrush(Color.FromArgb(250 * opacity / 255, Color.White)))
-            using (var offset = new Matrix())
             {
-                path.AddString(text, _labelFont.FontFamily, (int)_labelFont.Style, Scale((int)_labelFont.Size),
-                    bounds, format);
                 outline.LineJoin = LineJoin.Round;
-                offset.Translate(0, 1.4F);
-                using (var shadowPath = (GraphicsPath)path.Clone())
+                GraphicsState state = g.Save();
+                try
                 {
-                    shadowPath.Transform(offset);
-                    g.FillPath(shadow, shadowPath);
+                    g.TranslateTransform(bounds.X, bounds.Y);
+                    g.FillPath(shadow, geometry.Shadow);
+                    g.DrawPath(outline, geometry.Text);
+                    g.FillPath(fill, geometry.Text);
                 }
-                g.DrawPath(outline, path);
-                g.FillPath(fill, path);
+                finally { g.Restore(state); }
+            }
+        }
+
+        private struct LabelGeometryKey : IEquatable<LabelGeometryKey>
+        {
+            private readonly string _text;
+            private readonly SizeF _bounds;
+            public readonly int FontSize;
+            private readonly StringAlignment _alignment, _lineAlignment;
+            private readonly StringTrimming _trimming;
+            private readonly StringFormatFlags _flags;
+
+            public LabelGeometryKey(string text, SizeF bounds, int fontSize, StringFormat format)
+            {
+                _text = text; _bounds = bounds; FontSize = fontSize;
+                _alignment = format.Alignment; _lineAlignment = format.LineAlignment;
+                _trimming = format.Trimming; _flags = format.FormatFlags;
+            }
+
+            public bool Equals(LabelGeometryKey other)
+            {
+                return _text == other._text && _bounds == other._bounds && FontSize == other.FontSize &&
+                    _alignment == other._alignment && _lineAlignment == other._lineAlignment &&
+                    _trimming == other._trimming && _flags == other._flags;
+            }
+
+            public override bool Equals(object other)
+            { return other is LabelGeometryKey && Equals((LabelGeometryKey)other); }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = _text == null ? 0 : _text.GetHashCode();
+                    hash = hash * 397 ^ _bounds.GetHashCode();
+                    hash = hash * 397 ^ FontSize;
+                    hash = hash * 397 ^ (int)_alignment;
+                    hash = hash * 397 ^ (int)_lineAlignment;
+                    hash = hash * 397 ^ (int)_trimming;
+                    return hash * 397 ^ (int)_flags;
+                }
+            }
+        }
+
+        private sealed class LabelGeometry : IDisposable
+        {
+            public readonly GraphicsPath Text;
+            public readonly GraphicsPath Shadow;
+
+            public LabelGeometry(string text, Font font, int fontSize, SizeF bounds, StringFormat format)
+            {
+                Text = new GraphicsPath();
+                try
+                {
+                    Text.AddString(text, font.FontFamily, (int)font.Style, fontSize,
+                        new RectangleF(PointF.Empty, bounds), format);
+                    Shadow = (GraphicsPath)Text.Clone();
+                    using (var offset = new Matrix())
+                    {
+                        offset.Translate(0, 1.4F);
+                        Shadow.Transform(offset);
+                    }
+                }
+                catch { Dispose(); throw; }
+            }
+
+            public void Dispose()
+            {
+                Text.Dispose();
+                if (Shadow != null) Shadow.Dispose();
             }
         }
 
@@ -1085,6 +1160,9 @@ namespace DeskDecor
                 _headerMenu.Dispose();
                 _tooltip.Dispose();
                 _icons.Dispose();
+                foreach (LabelGeometry geometry in _labelGeometry.Values) geometry.Dispose();
+                _labelGeometry.Clear();
+                _labelGeometryOrder.Clear();
                 _labelFont.Dispose();
                 _surface.Dispose();
             }
