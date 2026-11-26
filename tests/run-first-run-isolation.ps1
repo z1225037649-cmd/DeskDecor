@@ -16,8 +16,9 @@ try {
         if ($source.Name -eq 'Program.cs') {
             $pairs += ,@('Application.Run(context);', 'FirstRunIsolationRegression.Verify(context, dataPath);')
             # Surface startup failures to the test runner instead of a modal dialog.
-            $text = $text.Replace('Native.MessageBox(IntPtr.Zero, "启动失败', 'throw new InvalidOperationException(ex.ToString()); /* Native.MessageBox(IntPtr.Zero, "启动失败')
-            $text = $text.Replace('Native.MB_OK | Native.MB_ICONERROR | Native.MB_TOPMOST | Native.MB_SETFOREGROUND);', 'Native.MB_OK | Native.MB_ICONERROR | Native.MB_TOPMOST | Native.MB_SETFOREGROUND); */')
+            # ASCII-only boundaries also work with Windows PowerShell's ANSI decoding.
+            $pairs += ,@('try { File.WriteAllText(logPath, ex.ToString()); } catch { }', 'try { File.WriteAllText(logPath, ex.ToString()); } catch { } throw new InvalidOperationException(ex.ToString()); /*')
+            $pairs += ,@('Native.MB_OK | Native.MB_ICONERROR | Native.MB_TOPMOST | Native.MB_SETFOREGROUND);', 'Native.MB_OK | Native.MB_ICONERROR | Native.MB_TOPMOST | Native.MB_SETFOREGROUND); */')
         }
         if ($source.Name -eq 'AppContext.cs') {
             $pairs += ,@('_startup = new StartupRegistration(Application.ExecutablePath);', '_startup = new StartupRegistration(Application.ExecutablePath, new FirstRunIsolationRegression.StartupStore());')
